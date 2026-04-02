@@ -90,18 +90,18 @@ export default function LoginPage() {
                 <span className=" text-gray-500">Dish </span>
               </p>
               
-                <h1 className="text-2xl font-bold">Restaurant Portal</h1>
+                <h1 className="text-2xl font-bold">Campany Portal</h1>
               </div>
             </div>
 
             <div className="mt-16 max-w-md">
               <h2 className="text-5xl font-bold leading-tight">
-                Manage your restaurant in one beautiful place.
+                Manage your page in one beautiful place.
               </h2>
 
               <p className="mt-6 text-lg text-gray-600 leading-8">
                 Update your menu, brand your public page, generate your QR code,
-                and let customers discover your restaurant with a better digital experience.
+                and let customers discover your place with a better digital experience.
               </p>
             </div>
           </div>
@@ -129,7 +129,7 @@ export default function LoginPage() {
                 >
                   ScanDish
                 </p>
-                <h1 className="text-xl font-bold">Restaurant Portal</h1>
+                <h1 className="text-xl font-bold">Company Portal</h1>
               </div>
             </div>
 
@@ -231,7 +231,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-center text-xs text-gray-500 mt-5">
-              By continuing, you agree to use ScanDish for managing your restaurant profile.
+              By continuing, you agree to use ScanDish for managing your company profile.
             </p>
           </div>
         </section>
