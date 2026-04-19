@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ScanDish",
+  title: "ScanDish | Smart QR Scan Experience",
   description: "Smart QR Scan Experience platform",
 };
 

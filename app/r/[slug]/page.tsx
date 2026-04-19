@@ -4,6 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { FaInstagram, FaFacebook, FaTiktok, FaWhatsapp } from "react-icons/fa6";
+import {
+  Phone,
+  MessageCircle,
+  Globe,
+  MapPin,
+  ArrowRight,
+  Quote,
+  Share2,
+  ZoomIn,
+  Search,
+} from "lucide-react";
 
 export default function RestaurantPage() {
   const params = useParams();
@@ -13,6 +25,7 @@ export default function RestaurantPage() {
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
   const [activeCategory, setActiveCategory] = useState("Overview");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const loadRestaurant = async () => {
@@ -50,10 +63,18 @@ export default function RestaurantPage() {
     return categories.map((cat: any) => cat.items?.[0]).filter(Boolean);
   }, [categories]);
 
-  const displayedItems =
+  const filteredByCategory =
     activeCategory === "Overview"
       ? overviewItems
       : categories.find((cat: any) => cat.category === activeCategory)?.items || [];
+
+  const displayedItems = searchQuery.trim()
+    ? filteredByCategory.filter(
+        (item: any) =>
+          item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : filteredByCategory;
 
   const theme = {
     primaryColor: restaurant?.theme?.primaryColor || "#f08c6c",
@@ -62,23 +83,71 @@ export default function RestaurantPage() {
   };
 
   const sharePage = async () => {
-    const shareUrl = window.location.href;
-    const shareTitle = restaurant?.name || "Restaurant Page";
+  const shareUrl = window.location.href;
+  const shareTitle = restaurant?.name || "Restaurant Page";
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: shareTitle,
+        text: `Check out ${shareTitle} on ScanDish`,
+        url: shareUrl,
+      });
+      return;
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(shareUrl);
+      alert("Page link copied");
+      return;
+    }
+
+    const textArea = document.createElement("textarea");
+    textArea.value = shareUrl;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
 
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: shareTitle,
-          text: `Check out ${shareTitle} on ScanDish`,
-          url: shareUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-        alert("Page link copied");
-      }
-    } catch (error) {
-      console.error(error);
+      document.execCommand("copy");
+      alert("Page link copied");
+    } catch (err) {
+      alert("Copy failed. Please copy this link manually: " + shareUrl);
     }
+
+    document.body.removeChild(textArea);
+  } catch (error) {
+    console.error(error);
+    alert("Sharing not supported on this device.");
+  }
+};
+
+  const normalizeWebsiteUrl = (value: string) => {
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) return value;
+    return `https://${value}`;
+  };
+
+  const normalizeInstagramUrl = (value: string) => {
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) return value;
+    return `https://instagram.com/${value.replace(/^@/, "")}`;
+  };
+
+  const normalizeFacebookUrl = (value: string) => {
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) return value;
+    return `https://facebook.com/${value}`;
+  };
+
+  const normalizeTikTokUrl = (value: string) => {
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) return value;
+    const clean = value.startsWith("@") ? value : `@${value}`;
+    return `https://tiktok.com/${clean}`;
   };
 
   const mapEmbedUrl = restaurant?.location
@@ -120,71 +189,67 @@ export default function RestaurantPage() {
 
   return (
     <main
-      className="min-h-screen"
+      className="min-h-screen font-sans pb-12 transition-colors duration-500"
       style={{ backgroundColor: theme.backgroundColor }}
     >
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
-        {/* Hero */}
-        <section className="relative overflow-hidden rounded-[2rem] border border-[#f2ddd6] bg-white shadow-sm">
-          <div className="relative h-72 md:h-[26rem]">
+      {/* 1. IMMERSIVE HERO */}
+      <section className="relative w-full h-[70vh] min-h-[500px] max-h-[800px] flex flex-col items-center justify-center text-center px-4">
+        <div className="absolute inset-0 z-0">
+          <img
+            src={restaurant.coverImage || "/images/kigali-grill.jpg"}
+            alt={restaurant.name}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
+          <div
+            className="absolute inset-0 opacity-30 mix-blend-multiply"
+            style={{ backgroundColor: theme.primaryColor }}
+          />
+        </div>
+
+        {restaurant.logo && (
+          <div className="absolute top-6 left-6 z-20">
             <img
-              src={restaurant.coverImage || "/images/kigali-grill.jpg"}
-              alt={restaurant.name}
-              className="w-full h-full object-cover"
+              src={restaurant.logo}
+              alt={`${restaurant.name} logo`}
+              className="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-2 border-white/50 shadow-lg bg-white"
             />
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
-
-            <div className="absolute top-5 right-5">
-              <button
-                onClick={sharePage}
-                className="inline-flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-white transition"
-              >
-                <span>🔗</span>
-                <span>Share</span>
-              </button>
-            </div>
-
-            <div className="absolute bottom-0 left-0 right-0 p-5 md:p-8">
-              <div className="flex items-end gap-4">
-                {restaurant.logo ? (
-                  <img
-                    src={restaurant.logo}
-                    alt={`${restaurant.name} logo`}
-                    className="w-15 h-15 md:w-24 md:h-24 rounded-2xl object-cover border-2 border-white shadow-lg bg-white"
-                  />
-                ) : (
-                  <div className="w-15 h-15 md:w-24 md:h-24 rounded-2xl border-2 border-white shadow-lg flex items-center justify-center text-3xl bg-white">
-                    🍽️
-                  </div>
-                )}
-
-                <div className="pb-1">
-                  <p className="text-white/85 text-sm font-medium">Welcome to</p>
-                  <h1 className="text-white text-2xl md:text-3xl font-bold leading-tight">
-                    {restaurant.name}
-                  </h1>
-                  {restaurant.description && (
-                    <p className="mt-0.5 text-white/90 text-sm md:text-base max-w-2xl">
-                      {restaurant.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
-        </section>
+        )}
 
-        {/* Quick actions */}
-        <section className="mt-3">
-          <div className="grid grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3">
+        <div className="absolute top-6 right-6 z-20">
+          <button
+            onClick={sharePage}
+            className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-white/20 transition-all duration-300"
+          >
+            <Share2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Share</span>
+          </button>
+        </div>
+
+        <div className="relative z-10 max-w-4xl mx-auto mt-12">
+          <h1 className="text-white text-5xl md:text-7xl font-bold tracking-tight leading-tight drop-shadow-xl mb-6">
+            {restaurant.name}
+          </h1>
+          {restaurant.description && (
+            <p className="text-white/90 text-lg md:text-2xl font-medium max-w-2xl mx-auto drop-shadow-md leading-relaxed">
+              {restaurant.description}
+            </p>
+          )}
+        </div>
+
+        <div className="absolute bottom-0 left-0 right-0 translate-y-1/2 z-30 px-4">
+          <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 max-w-3xl mx-auto">
             {restaurant.phone && (
               <a
                 href={`tel:${restaurant.phone}`}
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="Call Us"
               >
-                Call
+                <Phone
+                  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+                  style={{ color: theme.primaryColor }}
+                />
               </a>
             )}
 
@@ -193,289 +258,351 @@ export default function RestaurantPage() {
                 href={`https://wa.me/${restaurant.whatsapp}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="WhatsApp"
               >
-                WhatsApp
+                <FaWhatsapp
+                  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+                  style={{ color: theme.primaryColor }}
+                />
               </a>
             )}
 
             {restaurant.website && (
               <a
-                href={`https://www.${restaurant.website}`}
+                href={normalizeWebsiteUrl(restaurant.website)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="Website"
               >
-                Website
+                <Globe
+                  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+                  style={{ color: theme.primaryColor }}
+                />
               </a>
             )}
 
             {restaurant.social?.instagram && (
               <a
-                href={`https://instagram.com/${restaurant.social.instagram}`}
+                href={normalizeInstagramUrl(restaurant.social.instagram)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="Instagram"
               >
-                Instagram
+                <FaInstagram
+  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+  style={{ color: theme.primaryColor }}
+/>
               </a>
             )}
 
             {restaurant.social?.facebook && (
               <a
-               href={`https://facebook.com/${restaurant.social.facebook}`}
+                href={normalizeFacebookUrl(restaurant.social.facebook)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="Facebook"
               >
-                Facebook
+                <FaFacebook
+  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+  style={{ color: theme.primaryColor }}
+/>
               </a>
             )}
 
             {restaurant.social?.tiktok && (
               <a
-                href={`https://tiktok.com/@${restaurant.social.tiktok}`}
+                href={normalizeTikTokUrl(restaurant.social.tiktok)}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-2xl px-4 py-4 text-center font-semibold text-white shadow-sm hover:opacity-95 transition"
-                style={{ backgroundColor: theme.primaryColor }}
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                title="TikTok"
               >
-                TikTok
+                <FaTiktok
+  className="w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:scale-110"
+  style={{ color: theme.primaryColor }}
+/>
               </a>
             )}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Offers */}
-        {offers.length > 0 && (
-          <section className="mt-8">
-            <div className="mb-4">
-              <h2
-                className="text-2xl md:text-3xl font-bold"
-                style={{ color: theme.secondaryColor }}
-              >
-                Offers & Perks
-              </h2>
-              <p className="text-gray-500 mt-1">
-                What customers can enjoy here
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {offers.map((offer: string, index: number) => (
-                <div
-                  key={index}
-                  className="rounded-[1.5rem] border border-[#f2ddd6] bg-white px-5 py-5 shadow-sm"
-                >
-                  <p
-                    className="font-semibold text"
-                    style={{ color: theme.secondaryColor }}
-                  >
-                    {offer}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* About */}
-        {restaurant.about && (
-          <section className="mt-8">
-            <h2
-              className="text-2xl md:text-3xl font-bold"
-              style={{ color: theme.secondaryColor }}
+      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-12">
+        {/* 2. BENTO GRID: About + Offers */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {restaurant.about && (
+            <div
+              className="lg:col-span-2 rounded-[2rem] p-8 md:p-12 relative overflow-hidden shadow-[0_4px_24px_rgba(240,140,108,0.08)] border border-[#f0e0d8]"
+              style={{ backgroundColor: "#fff" }}
             >
-              About Us
-            </h2>
-            <p className="mt-4 text-base md:text-lg leading-8 text-gray-700">
-              {restaurant.about}
-            </p>
-          </section>
-        )}
-
-        {/* Menu */}
-        {categories.length > 0 && (
-          <section className="mt-8">
-            <div className="flex items-end justify-between gap-4 mb-5">
-              <div>
+              <div
+                className="absolute inset-0 opacity-5"
+                style={{ backgroundColor: theme.primaryColor }}
+              />
+              <Quote
+                className="absolute top-8 right-8 w-32 h-32 opacity-5 rotate-12"
+                style={{ color: theme.primaryColor }}
+              />
+              <div className="relative z-10">
                 <h2
-                  className="text-2xl md:text-3xl font-bold"
+                  className="text-sm font-bold tracking-widest uppercase mb-6"
+                  style={{ color: theme.primaryColor }}
+                >
+                  Our Story
+                </h2>
+                <p
+                  className="text-xl md:text-3xl leading-relaxed font-medium"
                   style={{ color: theme.secondaryColor }}
                 >
-                  Our Menu
-                </h2>
-                <p className="text-gray-500 mt-1">
-                  Explore what the offers
+                  {restaurant.about}
                 </p>
               </div>
             </div>
+          )}
+        </section>
+      </div>
 
-            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+      {/* 3. MENU SECTION */}
+      {categories.length > 0 && (
+        <section className="bg-white py-16 md:py-24 border-y border-[#f0e0d8] shadow-sm">
+          <div className="max-w-6xl mx-auto px-4 md:px-6">
+            <div className="text-center mb-10">
+              <h2
+                className="text-4xl md:text-5xl font-bold tracking-tight mb-4"
+                style={{ color: theme.secondaryColor }}
+              >
+                The Menu
+              </h2>
+              <p className="text-lg text-gray-500 font-medium">
+                Curated selections for every taste
+              </p>
+            </div>
+
+            <div className="max-w-md mx-auto mb-10 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search dishes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-5 py-3.5 rounded-full border border-[#f0e0d8] bg-[#fff8f5] text-base font-medium placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
+                style={{ focusRingColor: theme.primaryColor } as any}
+              />
+            </div>
+
+            <div className="flex gap-6 overflow-x-auto pb-4 mb-12 no-scrollbar border-b border-gray-100 snap-x snap-mandatory -mx-4 px-4 md:mx-0 md:px-0 md:justify-center">
               {categoryNames.map((category: string) => {
                 const isActive = activeCategory === category;
-
                 return (
                   <button
                     key={category}
                     onClick={() => setActiveCategory(category)}
-                    className="px-5 py-3 rounded-2xl font-semibold whitespace-nowrap transition shadow-sm"
+                    className="relative pb-4 text-lg font-semibold whitespace-nowrap transition-colors duration-300 snap-start"
                     style={{
-                      backgroundColor: isActive ? theme.primaryColor : "#fff7f3",
-                      color: isActive ? "#ffffff" : theme.secondaryColor,
-                      border: `1px solid ${isActive ? theme.primaryColor : "#f2ddd6"}`,
+                      color: isActive ? theme.secondaryColor : "#9ca3af",
                     }}
                   >
                     {category}
+                    {isActive && (
+                      <span
+                        className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full"
+                        style={{ backgroundColor: theme.primaryColor }}
+                      />
+                    )}
                   </button>
                 );
               })}
             </div>
 
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
               {displayedItems.map((item: any, index: number) => (
                 <div
                   key={index}
-                  className="group rounded-[2rem] overflow-hidden border border-[#f2ddd6] bg-white shadow-sm hover:shadow-md transition"
+                  className="group flex flex-col sm:flex-row bg-[#fff8f5] rounded-[2rem] overflow-hidden border border-[#f0e0d8] hover:shadow-[0_12px_30px_rgba(240,140,108,0.12)] transition-all duration-500"
                 >
-                  <div className="relative overflow-hidden">
+                  <div className="sm:w-2/5 h-48 sm:h-auto relative overflow-hidden shrink-0">
                     <img
                       src={item.image || "/images/food1.jpg"}
                       alt={item.name}
-                      className="w-full h-60 object-cover group-hover:scale-105 transition duration-500"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     />
+                  </div>
 
-                    <div className="absolute top-4 right-4">
+                  <div className="p-6 sm:p-8 flex flex-col justify-center flex-1">
+                    <div className="flex justify-between items-start gap-4 mb-3">
+                      <h3
+                        className="text-2xl font-bold tracking-tight leading-tight"
+                        style={{ color: theme.secondaryColor }}
+                      >
+                        {item.name}
+                      </h3>
                       <span
-                        className="inline-flex rounded-full px-4 py-2 text-sm font-bold text-white shadow-sm"
-                        style={{ backgroundColor: theme.primaryColor }}
+                        className="text-2xl font-bold shrink-0"
+                        style={{ color: theme.primaryColor }}
                       >
                         {item.price}
                       </span>
                     </div>
-                  </div>
-
-                  <div className="p-4">
-                    <h3
-                      className="text-2xl font-bold"
-                      style={{ color: theme.secondaryColor }}
-                    >
-                      {item.name}
-                    </h3>
-
                     {item.description && (
-                      <p className="mt-1 text-gray-600 leading-7">
+                      <p className="text-gray-600 leading-relaxed font-medium">
                         {item.description}
                       </p>
                     )}
                   </div>
                 </div>
               ))}
-            </div>
-          </section>
-        )}
 
-        {/* Gallery */}
+              {displayedItems.length === 0 && (
+                <div className="col-span-full text-center py-10">
+                  <p className="text-gray-500 text-lg">No dishes found.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {offers.length > 0 && (
+            <div className="lg:col-span-1 flex flex-col gap-4">
+              <div className="rounded-[0rem] bg-white p-8 shadow-[0_4px_24px_rgba(240,140,108,0.08)] border border-[#f0e0d8] h-full flex flex-col">
+                <h2
+                  className="text-sm font-bold tracking-widest uppercase mb-6"
+                  style={{ color: theme.primaryColor }}
+                >
+                  Highlights
+                </h2>
+                <div className="flex flex-col gap-3 flex-1 justify-center">
+                  {offers.map((offer: string, index: number) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-4 p-4 rounded-2xl bg-[#fff8f5] border border-[#f0e0d8] transition-transform duration-300 hover:-translate-y-1"
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: theme.primaryColor }}
+                      />
+                      <span
+                        className="font-semibold text-lg"
+                        style={{ color: theme.secondaryColor }}
+                      >
+                        {offer}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-16 md:pt-24">
+        {/* 4. GALLERY */}
         {restaurant.gallery?.length > 0 && (
-          <section className="mt-8">
-            <div className="flex items-end justify-between gap-4 mb-5">
+          <section className="mb-16 md:mb-24">
+            <div className="flex items-end justify-between gap-4 mb-8">
               <div>
                 <h2
-                  className="text-2xl md:text-3xl font-bold"
+                  className="text-3xl md:text-4xl font-bold tracking-tight"
                   style={{ color: theme.secondaryColor }}
                 >
-                  Gallery
+                  Atmosphere
                 </h2>
-                <p className="text-gray-500 mt-1">
-                  A quick look at the atmosphere and views
-                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {restaurant.gallery.map((img: string, index: number) => (
-                <div
-                  key={index}
-                  className="rounded-[1.5rem] overflow-hidden border border-[#f2ddd6] bg-white shadow-sm"
-                >
-                  <img
-                    src={img}
-                    className="w-full h-40 md:h-52 object-cover hover:scale-105 transition duration-500"
-                    alt={`Gallery ${index + 1}`}
-                  />
-                </div>
-              ))}
+            <div className="relative -mx-4 px-4 md:mx-0 md:px-0">
+              <div className="flex gap-4 md:gap-6 overflow-x-auto pb-8 pt-4 snap-x snap-mandatory no-scrollbar">
+                {restaurant.gallery.map((img: string, index: number) => (
+                  <div
+                    key={index}
+                    className="relative shrink-0 w-72 md:w-96 h-56 md:h-72 rounded-[2rem] overflow-hidden shadow-md snap-center group cursor-pointer"
+                  >
+                    <img
+                      src={img}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      alt={`Gallery ${index + 1}`}
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                      <ZoomIn className="w-10 h-10 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 scale-50 group-hover:scale-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="absolute top-0 bottom-8 right-0 w-12 pointer-events-none hidden md:block"
+                style={{
+                  backgroundImage: `linear-gradient(to left, ${theme.backgroundColor}, transparent)`,
+                }}
+              />
             </div>
           </section>
         )}
 
-        {/* Find us */}
-        {restaurant.location && (
-          <section className="mt-8">
-            <div className="bg-white rounded-[2rem] border border-[#f2ddd6] shadow-sm overflow-hidden">
-              <div className="p-6 md:p-8">
-                <h2
-                  className="text-2xl font-bold"
-                  style={{ color: theme.secondaryColor }}
-                >
-                  Find Us
-                </h2>
-                <p className="text-sm text-gray-500 mt-1 mb-5">
-                  Open the map or get directions
-                </p>
+        {/* 5. FIND US */}
+        <section className="bg-white rounded-[2.5rem] border border-[#f0e0d8] shadow-[0_4px_24px_rgba(240,140,108,0.08)] overflow-hidden">
+          {restaurant.location && (
+            <div className="p-2">
+              <div className="rounded-[2rem] overflow-hidden border border-[#f0e0d8] relative h-80 md:h-[28rem] group">
+                <iframe
+                  src={mapEmbedUrl}
+                  className="w-full h-full filter grayscale-[10%] contrast-[1.05] group-hover:grayscale-0 transition-all duration-500"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
 
-                <div className="rounded-[1.5rem] overflow-hidden border border-[#f2ddd6]">
-                  <iframe
-                    src={mapEmbedUrl}
-                    className="w-full h-72 md:h-96"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                </div>
-
-                <div className="mt-5 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+              <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 md:items-center md:justify-between">
+                <div className="flex items-start md:items-center gap-4">
+                  <div
+                    className="p-4 rounded-full bg-[#fff8f5] shrink-0"
+                    style={{ color: theme.primaryColor }}
+                  >
+                    <MapPin className="w-8 h-8" />
+                  </div>
                   <div>
+                    <h3
+                      className="text-sm font-bold tracking-widest uppercase mb-1"
+                      style={{ color: theme.primaryColor }}
+                    >
+                      Location
+                    </h3>
                     <p
-                      className="font-semibold text-lg"
+                      className="font-bold text-xl md:text-2xl tracking-tight"
                       style={{ color: theme.secondaryColor }}
                     >
                       {restaurant.location}
                     </p>
                   </div>
-
-                  <a
-                    href={directionsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-white font-semibold shadow-sm"
-                    style={{ backgroundColor: theme.primaryColor }}
-                  >
-                    Get Directions
-                  </a>
                 </div>
+
+                <a
+                  href={directionsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-3 rounded-full px-8 py-4 text-white font-bold shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 w-full md:w-auto text-lg"
+                  style={{ backgroundColor: theme.primaryColor }}
+                >
+                  <span>Get Directions</span>
+                  <ArrowRight className="w-6 h-6" />
+                </a>
               </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
+      </div>
 
-        {/* Footer */}
-        <footer className="mt-10">
-          <div className="rounded-[1rem] border border-white bg-white px-6 py-6 shadow-sm text-center">
-            <p
-              className="text-lg font-bold"
-              style={{ color: theme.secondaryColor }}
-            >
-              Powered by <span style={{ color: theme.primaryColor }}>ScanDish</span>
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Smart QR Scan Experience
-            </p>
-          </div>
-        </footer>
+      <div className="text-center py-8 mt-6">
+        <p className="text-sm text-gray-400 font-medium">
+          Powered by{" "}
+          <span style={{ color: theme.primaryColor }} className="font-semibold">
+            ScanDish
+          </span>{" "}
+          · Smart QR Scan Experience
+        </p>
       </div>
     </main>
   );
