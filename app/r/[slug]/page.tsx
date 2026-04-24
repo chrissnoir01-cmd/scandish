@@ -212,7 +212,7 @@ export default function RestaurantPage() {
             <img
               src={restaurant.logo}
               alt={`${restaurant.name} logo`}
-              className="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-2 border-white/50 shadow-lg bg-white"
+              className="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-1 border-white/50 shadow-lg bg-white"
             />
           </div>
         )}
@@ -332,7 +332,7 @@ export default function RestaurantPage() {
       </section>
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-12">
-        {/* 2. BENTO GRID: About + Offers */}
+        {/* 2. BENTO GRID: About */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {restaurant.about && (
             <div
@@ -417,51 +417,70 @@ export default function RestaurantPage() {
                 );
               })}
             </div>
+ {/* Menu Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+          {displayedItems.map((item, index) => (
+            <div
+              key={index}
+              className="group flex flex-col sm:flex-row bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+            >
+              {/* Image Container - 4:3 on mobile, square on desktop */}
+              <div className="w-full sm:w-48 aspect-[4/3] sm:aspect-square overflow-hidden shrink-0 bg-gray-50 relative">
+                <img
+                  src={item.image || '/images/food-placeholder.jpg'}
+                  alt={item.name}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                {/* Subtle gradient overlay for image depth */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-              {displayedItems.map((item: Record<string, any>, index: number) => (
-                <div
-                  key={index}
-                  className="group flex flex-col sm:flex-row bg-[#fff8f5] rounded-[2rem] overflow-hidden border border-[#f0e0d8] hover:shadow-[0_12px_30px_rgba(240,140,108,0.12)] transition-all duration-500"
-                >
-                  <div className="sm:w-2/5 h-48 sm:h-auto relative overflow-hidden shrink-0">
-                    <img
-                      src={item.image || "/images/food1.jpg"}
-                      alt={item.name}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    />
-                  </div>
-
-                  <div className="p-6 sm:p-8 flex flex-col justify-center flex-1">
-                    <div className="flex justify-between items-start gap-4 mb-3">
-                      <h3
-                        className="text-2xl font-bold tracking-tight leading-tight"
-                        style={{ color: theme.secondaryColor }}
-                      >
-                        {item.name}
-                      </h3>
-                      <span
-                        className="text-2xl font-bold shrink-0"
-                        style={{ color: theme.primaryColor }}
-                      >
-                        {item.price}
-                      </span>
-                    </div>
-                    {item.description && (
-                      <p className="text-gray-600 leading-relaxed font-medium">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
+              {/* Content Container */}
+              <div className="p-5 sm:p-6 flex flex-col flex-1 justify-center">
+                <div className="flex justify-between items-start gap-4 mb-2">
+                  <h3
+                    className="text-lg lg:text-xl font-bold leading-tight"
+                    style={{
+                      color: theme.secondaryColor,
+                    }}
+                  >
+                    {item.name}
+                  </h3>
+                  <span
+                    className="text-sm font-bold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0"
+                    style={{
+                      color: theme.primaryColor,
+                      backgroundColor: `${theme.primaryColor}15`, // 15 is hex for ~8% opacity
+                    }}
+                  >
+                    {item.price}
+                  </span>
                 </div>
-              ))}
 
-              {displayedItems.length === 0 && (
-                <div className="col-span-full text-center py-10">
-                  <p className="text-gray-500 text-lg">No dishes found.</p>
-                </div>
-              )}
+                {item.description && (
+                  <p className="text-sm text-gray-500 leading-relaxed line-clamp-3 mt-1">
+                    {item.description}
+                  </p>
+                )}
+              </div>
             </div>
+          ))}
+
+          {/* Empty State */}
+          {displayedItems.length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 px-4 text-center bg-white rounded-2xl border border-gray-100 border-dashed">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <span className="text-2xl">🍽️</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">
+                No dishes found
+              </h3>
+              <p className="text-gray-500">
+                Try selecting a different category.
+              </p>
+            </div>
+          )}
+        </div>
           </div>
         </section>
       )}
@@ -541,6 +560,18 @@ export default function RestaurantPage() {
             </div>
           </section>
         )}
+
+        {restaurant.whatsapp && (
+  <a
+    href={`https://wa.me/${restaurant.whatsapp}`}
+    target="_blank"
+    rel="noreferrer"
+    className="fixed bottom-6 right-5 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-2xl animate-[shake_1.5s_ease-in-out_infinite] hover:scale-110 transition-transform"
+    title="Chat on WhatsApp"
+  >
+    <FaWhatsapp className="w-8 h-8" />
+  </a>
+)}
 
         {/* 5. FIND US */}
         <section className="bg-white rounded-[2.5rem] border border-[#f0e0d8] shadow-[0_4px_24px_rgba(240,140,108,0.08)] overflow-hidden">
