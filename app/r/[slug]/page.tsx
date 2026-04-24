@@ -21,7 +21,7 @@ export default function RestaurantPage() {
   const params = useParams();
   const slug = params?.slug as string;
 
-  const [restaurant, setRestaurant] = useState<any | null>(null);
+  const [restaurant, setRestaurant] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
   const [activeCategory, setActiveCategory] = useState("Overview");
@@ -56,21 +56,21 @@ export default function RestaurantPage() {
   const offers = restaurant?.offers || [];
 
   const categoryNames = useMemo(() => {
-    return ["Overview", ...categories.map((cat: any) => cat.category)];
+    return ["Overview", ...categories.map((cat: Record<string, any>) => cat.category)];
   }, [categories]);
 
   const overviewItems = useMemo(() => {
-    return categories.map((cat: any) => cat.items?.[0]).filter(Boolean);
+    return categories.map((cat: Record<string, any>) => cat.items?.[0]).filter(Boolean);
   }, [categories]);
 
   const filteredByCategory =
     activeCategory === "Overview"
       ? overviewItems
-      : categories.find((cat: any) => cat.category === activeCategory)?.items || [];
+      : categories.find((cat: Record<string, any>) => cat.category === activeCategory)?.items || [];
 
   const displayedItems = searchQuery.trim()
     ? filteredByCategory.filter(
-        (item: any) =>
+        (item: Record<string, any>) =>
           item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.description?.toLowerCase().includes(searchQuery.toLowerCase())
       )
@@ -419,7 +419,7 @@ export default function RestaurantPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-              {displayedItems.map((item: any, index: number) => (
+              {displayedItems.map((item: Record<string, any>, index: number) => (
                 <div
                   key={index}
                   className="group flex flex-col sm:flex-row bg-[#fff8f5] rounded-[2rem] overflow-hidden border border-[#f0e0d8] hover:shadow-[0_12px_30px_rgba(240,140,108,0.12)] transition-all duration-500"
@@ -476,7 +476,7 @@ export default function RestaurantPage() {
                   Highlights
                 </h2>
                 <div className="flex flex-col gap-3 flex-1 justify-center">
-                  {offers.map((offer: string, index: number) => (
+                  {offers.map((offer: Record<string, any> | string, index: number) => (
                     <div
                       key={index}
                       className="flex items-center gap-4 p-4 rounded-2xl bg-[#fff8f5] border border-[#f0e0d8] transition-transform duration-300 hover:-translate-y-1"
@@ -489,7 +489,7 @@ export default function RestaurantPage() {
                         className="font-semibold text-lg"
                         style={{ color: theme.secondaryColor }}
                       >
-                        {offer}
+                        {typeof offer === "string" ? offer : offer.title}
                       </span>
                     </div>
                   ))}
