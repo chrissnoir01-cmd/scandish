@@ -449,7 +449,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
             </div>
  {/* Menu Cards Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-          {displayedItems.map((item, index) => (
+          {displayedItems.map((item: Record<string, any>, index: number) => (
             <div
               key={index}
               className="group flex flex-col sm:flex-row bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
