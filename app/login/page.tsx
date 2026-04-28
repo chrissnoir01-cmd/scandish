@@ -1,20 +1,17 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-} from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 const BRAND = "#f08c6c";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -22,13 +19,18 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const login = async () => {
+    if (!email || !password) {
+      setErrorMessage("Please enter your email and password.");
+      return;
+    }
+
     setErrorMessage("");
     setLoading(true);
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
       setErrorMessage("Login failed. Check your email and password.");
     } finally {
@@ -36,38 +38,9 @@ export default function LoginPage() {
     }
   };
 
-  const register = async () => {
-    setErrorMessage("");
-    setLoading(true);
-
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard");
-    } catch (error: any) {
-      console.error(error);
-      setErrorMessage("Sign up failed. Try a different email or stronger password.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!email || !password) {
-      setErrorMessage("Please enter your email and password.");
-      return;
-    }
-
-    if (mode === "login") {
-      await login();
-    } else {
-      await register();
-    }
-  };
-
   return (
     <main className="min-h-screen bg-[#fff8f5] text-gray-900">
       <div className="min-h-screen grid lg:grid-cols-2">
-        {/* Left branding side */}
         <section className="hidden lg:flex flex-col justify-between p-10 bg-white border-r border-[#f3d8cf]">
           <div>
             <div className="flex items-center gap-4">
@@ -83,14 +56,12 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <p
-                 className="mt-5 text-2xl md:text-4xl font-bold leading-tight">
-                  {" "}
-                <span style={{ color: BRAND }}>Scan</span>
-                <span className=" text-gray-500">Dish </span>
-              </p>
-              
-                <h1 className="text-2xl font-bold">Campany Portal</h1>
+                <p className="mt-5 text-2xl md:text-4xl font-bold leading-tight">
+                  <span style={{ color: BRAND }}>Scan</span>
+                  <span className="text-gray-500">Dish</span>
+                </p>
+
+                <h1 className="text-2xl font-bold">Company Portal</h1>
               </div>
             </div>
 
@@ -107,10 +78,8 @@ export default function LoginPage() {
           </div>
         </section>
 
-        {/* Right form side */}
         <section className="flex items-center justify-center p-6 md:p-10">
           <div className="w-full max-w-md">
-            {/* Mobile brand */}
             <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
               <div className="relative w-14 h-14 overflow-hidden rounded-2xl border border-[#f3d8cf] shadow-sm">
                 <Image
@@ -134,17 +103,11 @@ export default function LoginPage() {
             </div>
 
             <div className="bg-white border border-[#f3d8cf] rounded-3xl shadow-sm p-6 md:p-8">
-              <div className="flex items-center justify-between gap-3 mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold">
-                    {mode === "login" ? "Welcome back" : "Create account"}
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {mode === "login"
-                      ? "Login to manage your restaurant dashboard."
-                      : "Sign up to create and manage your restaurant profile."}
-                  </p>
-                </div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold">Welcome back</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Login to manage your restaurant dashboard.
+                </p>
               </div>
 
               <div className="space-y-4">
@@ -169,6 +132,9 @@ export default function LoginPage() {
                     style={{ ["--tw-ring-color" as any]: BRAND }}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") login();
+                    }}
                   />
                 </div>
 
@@ -180,58 +146,29 @@ export default function LoginPage() {
 
                 <button
                   type="button"
-                  onClick={handleSubmit}
+                  onClick={login}
                   disabled={loading}
                   className="w-full text-white rounded-2xl px-4 py-3 font-semibold shadow-sm disabled:opacity-60"
                   style={{ backgroundColor: BRAND }}
                 >
-                  {loading
-                    ? mode === "login"
-                      ? "Logging in..."
-                      : "Creating account..."
-                    : mode === "login"
-                    ? "Login"
-                    : "Create Account"}
+                  {loading ? "Logging in..." : "Login"}
                 </button>
               </div>
 
               <div className="mt-6 text-center text-sm text-gray-500">
-                {mode === "login" ? (
-                  <>
-                    Don’t have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode("signup");
-                        setErrorMessage("");
-                      }}
-                      className="font-semibold"
-                      style={{ color: BRAND }}
-                    >
-                      Sign up
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    Already have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode("login");
-                        setErrorMessage("");
-                      }}
-                      className="font-semibold"
-                      style={{ color: BRAND }}
-                    >
-                      Login
-                    </button>
-                  </>
-                )}
+                New company?{" "}
+                <Link
+                  href="/company-signup"
+                  className="font-semibold"
+                  style={{ color: BRAND }}
+                >
+                  Create password with invite code
+                </Link>
               </div>
             </div>
 
             <p className="text-center text-xs text-gray-500 mt-5">
-              By continuing, you agree to use ScanDish for managing your company profile.
+              Company accounts are created by ScanDish MasterAdmin first.
             </p>
           </div>
         </section>

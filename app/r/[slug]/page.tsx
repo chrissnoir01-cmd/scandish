@@ -26,6 +26,7 @@ export default function RestaurantPage() {
   const [notFoundState, setNotFoundState] = useState(false);
   const [activeCategory, setActiveCategory] = useState("Overview");
   const [searchQuery, setSearchQuery] = useState("");
+  const [company, setCompany] = useState<any | null>(null);
 
   useEffect(() => {
     const loadRestaurant = async () => {
@@ -41,6 +42,20 @@ export default function RestaurantPage() {
 
         const data = snapshot.docs[0].data();
         setRestaurant(data);
+
+// fetch company
+if (data.companyId) {
+  const companyQuery = query(
+    collection(db, "companies"),
+    where("__name__", "==", data.companyId)
+  );
+
+  const companySnap = await getDocs(companyQuery);
+
+  if (!companySnap.empty) {
+    setCompany(companySnap.docs[0].data());
+  }
+}
       } catch (error) {
         console.error(error);
         setNotFoundState(true);
@@ -125,6 +140,21 @@ export default function RestaurantPage() {
   }
 };
 
+const isCompanyActive = company?.status === "active";
+
+const isWithinGracePeriod = (() => {
+  if (!company?.subscriptionEnd) return false;
+
+  const end = new Date(company.subscriptionEnd);
+  const today = new Date();
+
+  const diff = (today.getTime() - end.getTime()) / (1000 * 60 * 60 * 24);
+
+  return diff <= 10; // 🔥 10 DAYS BONUS
+})();
+
+const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.subscriptionEnd) >= new Date());
+
   const normalizeWebsiteUrl = (value: string) => {
     if (!value) return "";
     if (value.startsWith("http://") || value.startsWith("https://")) return value;
@@ -173,7 +203,7 @@ export default function RestaurantPage() {
     );
   }
 
-  if (notFoundState || !restaurant) {
+  if (notFoundState || !restaurant || !isValid) {
     return (
       <main className="min-h-screen bg-[#fff8f5] flex items-center justify-center px-6">
         <div className="max-w-md w-full bg-white border border-[#f2ddd6] rounded-3xl shadow-sm p-8 text-center">
@@ -635,6 +665,8 @@ export default function RestaurantPage() {
           · Smart QR Scan Experience
         </p>
       </div>
+
+      
     </main>
   );
 }

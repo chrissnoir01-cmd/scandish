@@ -30,6 +30,8 @@ type TabKey =
 export default function DashboardPage() {
   const router = useRouter();
 
+  const [company, setCompany] = useState<any | null>(null);
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("general");
@@ -125,6 +127,27 @@ export default function DashboardPage() {
           setMenu(data.menu || []);
           setGallery(data.gallery || []);
           setOffers(data.offers || []);
+
+// 🔥 FIXED COMPANY FETCH (inside async)
+if (data.companyId) {
+  const companyRef = doc(db, "companies", data.companyId);
+  const companySnap = await getDoc(companyRef);
+
+  if (companySnap.exists()) {
+    const companyData = companySnap.data();
+    setCompany(companyData);
+
+    if (companyData.subscriptionEnd) {
+      const today = new Date();
+      const end = new Date(companyData.subscriptionEnd);
+
+      const diff = end.getTime() - today.getTime();
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+      setDaysRemaining(days);
+    }
+  }
+}
         }
       } catch (error) {
         console.error(error);
@@ -133,6 +156,8 @@ export default function DashboardPage() {
 
     loadRestaurant();
   }, [user]);
+
+  
 
   const uploadImageToCloudinary = async (file: File) => {
     const formData = new FormData();
@@ -151,6 +176,7 @@ export default function DashboardPage() {
 
     return data.url as string;
   };
+
 
   const addMenuItem = () => {
     if (!category || !itemName || !price) return;
@@ -563,6 +589,47 @@ export default function DashboardPage() {
         </div>
       </header>
 
+     {/* 🔥 SUBSCRIPTION WARNING */}
+{daysRemaining !== null && (
+  <div className="mx-auto max-w-7xl px-4 pt-6 md:px-6">
+    {/* 5 DAYS WARNING */}
+    {daysRemaining > 0 && daysRemaining <= 5 && (
+      <div className="mb-4 rounded-3xl border border-orange-200 bg-orange-50 px-5 py-4 text-orange-800">
+        <p className="font-bold">⚠️ Subscription ending soon</p>
+        <p className="text-sm mt-1">
+          Your ScanDish subscription ends in{" "}
+          <span className="font-semibold">
+            {daysRemaining} day{daysRemaining > 1 ? "s" : ""}
+          </span>.
+          Contact ScanDish to renew your plan.
+        </p>
+      </div>
+    )}
+
+    {/* GRACE PERIOD */}
+    {daysRemaining <= 0 && daysRemaining >= -10 && (
+      <div className="mb-4 rounded-3xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
+        <p className="font-bold">⏳ Grace period active</p>
+        <p className="text-sm mt-1">
+          Your subscription has expired, but your page is still active during
+          the 10-day bonus period.
+        </p>
+      </div>
+    )}
+
+    {/* FULLY EXPIRED */}
+    {daysRemaining < -10 && (
+      <div className="mb-4 rounded-3xl border border-red-300 bg-red-100 px-5 py-4 text-red-900">
+        <p className="font-bold">❌ Subscription expired</p>
+        <p className="text-sm mt-1">
+          Your restaurant page is no longer visible to customers. Contact
+          ScanDish to renew.
+        </p>
+      </div>
+    )}
+  </div>
+)}
+     
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[240px_1fr_340px] md:px-6">
         <aside className="space-y-3">
           <div className="rounded-3xl border border-[#f4d4ca] bg-white p-4 shadow-sm">
