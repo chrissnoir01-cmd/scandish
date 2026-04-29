@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { FaInstagram, FaFacebook, FaTiktok, FaWhatsapp } from "react-icons/fa6";
+import Link from "next/link";
 import {
   Phone,
   MessageCircle,
@@ -15,6 +16,11 @@ import {
   Share2,
   ZoomIn,
   Search,
+  LayoutGrid,
+  Rows3,
+  PanelTop,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 
 export default function RestaurantPage() {
@@ -26,6 +32,8 @@ export default function RestaurantPage() {
   const [notFoundState, setNotFoundState] = useState(false);
   const [activeCategory, setActiveCategory] = useState("Overview");
   const [searchQuery, setSearchQuery] = useState("");
+  const [menuStyle, setMenuStyle] = useState<"bar" | "card" | "square">("card");
+  const [showStylePicker, setShowStylePicker] = useState(false);
   const [company, setCompany] = useState<any | null>(null);
 
   useEffect(() => {
@@ -33,7 +41,7 @@ export default function RestaurantPage() {
       try {
         const q = query(collection(db, "restaurants"), where("slug", "==", slug));
         const snapshot = await getDocs(q);
-
+ 
         if (snapshot.empty) {
           setNotFoundState(true);
           setLoading(false);
@@ -361,312 +369,265 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
         </div>
       </section>
 
-      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-12">
-        {/* 2. BENTO GRID: About */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {restaurant.about && (
-            <div
-              className="lg:col-span-2 rounded-[2rem] p-8 md:p-12 relative overflow-hidden shadow-[0_4px_24px_rgba(240,140,108,0.08)] border border-[#f0e0d8]"
-              style={{ backgroundColor: "#fff" }}
-            >
-              <div
-                className="absolute inset-0 opacity-5"
-                style={{ backgroundColor: theme.primaryColor }}
-              />
-              <Quote
-                className="absolute top-8 right-8 w-32 h-32 opacity-5 rotate-12"
-                style={{ color: theme.primaryColor }}
-              />
-              <div className="relative z-10">
-                <h2
-                  className="text-sm font-bold tracking-widest uppercase mb-6"
-                  style={{ color: theme.primaryColor }}
-                >
-                  Our Story
-                </h2>
-                <p
-                  className="text-xl md:text-3xl leading-relaxed font-medium"
-                  style={{ color: theme.secondaryColor }}
-                >
-                  {restaurant.about}
-                </p>
+      {/* 2. OFFERS & ABOUT SECTION */}
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pt-14 pb-16">
+        
+        {/* OFFERS BAR */}
+        {offers.length > 0 && (
+          <div className="mb-20">
+            <div className="flex flex-wrap items-center justify-center gap-y-3">
+              <div className="flex items-center gap-2 mr-4 shrink-0">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: theme.primaryColor }} />
+                  <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: theme.primaryColor }} />
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Current Offers:</span>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center">
+                {offers.map((offer: any, index: number) => {
+                  const text = typeof offer === "string" ? offer : offer.text;
+                  const icon = typeof offer === "string" ? "✨" : offer.icon;
+                  return (
+                    <div key={index} className="inline-flex items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ color: theme.primaryColor }}>{icon}</span>
+                        <span className="text-sm md:text-base font-bold" style={{ color: theme.secondaryColor }}>{text}</span>
+                      </div>
+                      {index !== offers.length - 1 && <span className="mx-3 text-lg font-light opacity-20" style={{ color: theme.secondaryColor }}>,</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
+
+        {/* BENTO ABOUT */}
+        {restaurant.about && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 rounded-[2.5rem] p-8 md:p-14 relative overflow-hidden shadow-sm border border-[#f0e0d8]/60 bg-white">
+              <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundColor: theme.primaryColor }} />
+              <Quote className="absolute -top-4 -right-4 w-48 h-48 opacity-[0.03] -rotate-12 pointer-events-none" style={{ color: theme.primaryColor }} />
+              
+              <div className="relative z-10">
+                <div className="flex items-center gap-4 mb-8">
+                  <h2 className="text-sm font-black tracking-[0.2em] uppercase" style={{ color: theme.primaryColor }}>Our Story</h2>
+                  <div className="h-px w-12 bg-[#f0e0d8]" />
+                </div>
+                <p className="text-2xl md:text-4xl leading-[1.3] font-medium tracking-tight" style={{ color: theme.secondaryColor }}>
+                  {restaurant.about}
+                </p>
+                <div className="mt-10 w-16 h-1.5 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
+              </div>
+            </div>
+
+            {/* Side Image from Gallery */}
+            <div 
+              className="hidden lg:flex flex-col justify-end p-8 rounded-[2.5rem] border border-[#f0e0d8]/60 bg-cover bg-center relative overflow-hidden"
+              style={{ backgroundImage: `url('${restaurant.gallery?.[0] || restaurant.coverImage}')` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              <div className="relative z-10">
+                <p className="text-white font-bold text-lg">Quality Ingredients</p>
+                <p className="text-white/80 text-sm">Prepared with care</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* 3. MENU SECTION */}
       {categories.length > 0 && (
-        <section className="bg-white py-16 md:py-24 border-y border-[#f0e0d8] shadow-sm">
+        <section className="bg-[#fffcfb] py-16 md:py-24 border-y border-[#f0e0d8]/40 shadow-sm">
           <div className="max-w-6xl mx-auto px-4 md:px-6">
-            <div className="text-center mb-10">
-              <h2
-                className="text-4xl md:text-5xl font-bold tracking-tight mb-4"
-                style={{ color: theme.secondaryColor }}
-              >
-                The Menu
-              </h2>
-              <p className="text-lg text-gray-500 font-medium">
-                Curated selections for every taste
-              </p>
+            <div className="text-center mb-12">
+              <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-3" style={{ color: theme.secondaryColor }}>The Menu</h2>
+              <p className="text-gray-500 font-medium italic">Enjoy a curated selection of vibrant dishes.</p>
             </div>
 
-            <div className="max-w-md mx-auto mb-10 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search dishes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-5 py-3.5 rounded-full border border-[#f0e0d8] bg-[#fff8f5] text-base font-medium placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
-                style={{ focusRingColor: theme.primaryColor } as any}
-              />
-            </div>
-
-            <div className="flex gap-6 overflow-x-auto pb-4 mb-12 no-scrollbar border-b border-gray-100 snap-x snap-mandatory -mx-4 px-4 md:mx-0 md:px-0 md:justify-center">
-              {categoryNames.map((category: string) => {
-                const isActive = activeCategory === category;
-                return (
-                  <button
-                    key={category}
-                    onClick={() => setActiveCategory(category)}
-                    className="relative pb-4 text-lg font-semibold whitespace-nowrap transition-colors duration-300 snap-start"
-                    style={{
-                      color: isActive ? theme.secondaryColor : "#9ca3af",
-                    }}
-                  >
-                    {category}
-                    {isActive && (
-                      <span
-                        className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full"
-                        style={{ backgroundColor: theme.primaryColor }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
- {/* Menu Cards Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-          {displayedItems.map((item: Record<string, any>, index: number) => (
-            <div
-              key={index}
-              className="group flex flex-col sm:flex-row bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-            >
-              {/* Image Container - 4:3 on mobile, square on desktop */}
-              <div className="w-full sm:w-48 aspect-[4/3] sm:aspect-square overflow-hidden shrink-0 bg-gray-50 relative">
-                <img
-                  src={item.image || '/images/food-placeholder.jpg'}
-                  alt={item.name}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            {/* Search + Style Switcher */}
+            <div className="max-w-2xl mx-auto mb-10 flex items-center gap-3">
+              <div className="relative flex-1 group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-gray-600 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Search our menu..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-5 py-4 rounded-2xl border border-[#f0e0d8] bg-white text-base font-medium shadow-sm focus:ring-2 focus:outline-none transition-all"
+                  style={{ '--tw-ring-color': theme.primaryColor } as any}
                 />
-                {/* Subtle gradient overlay for image depth */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
 
-              {/* Content Container */}
-              <div className="p-5 sm:p-6 flex flex-col flex-1 justify-center">
-                <div className="flex justify-between items-start gap-4 mb-2">
-                  <h3
-                    className="text-lg lg:text-xl font-bold leading-tight"
-                    style={{
-                      color: theme.secondaryColor,
-                    }}
-                  >
-                    {item.name}
-                  </h3>
-                  <span
-                    className="text-sm font-bold px-3 py-1.5 rounded-full whitespace-nowrap shrink-0"
-                    style={{
-                      color: theme.primaryColor,
-                      backgroundColor: `${theme.primaryColor}15`, // 15 is hex for ~8% opacity
-                    }}
-                  >
-                    {item.price}
-                  </span>
-                </div>
-
-                {item.description && (
-                  <p className="text-sm text-gray-500 leading-relaxed line-clamp-3 mt-1">
-                    {item.description}
-                  </p>
+              <div className="relative">
+                <button onClick={() => setShowStylePicker(!showStylePicker)} className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#f0e0d8] bg-white shadow-sm" style={{ color: theme.primaryColor }}>
+                  {menuStyle === "bar" && <Rows3 className="w-6 h-6" />}
+                  {menuStyle === "card" && <PanelTop className="w-6 h-6" />}
+                  {menuStyle === "square" && <LayoutGrid className="w-6 h-6" />}
+                </button>
+                {showStylePicker && (
+                  <div className="absolute right-0 top-16 z-40 w-48 rounded-2xl border border-[#f0e0d8] bg-white p-2 shadow-xl animate-in fade-in zoom-in duration-150">
+                    {["bar", "card", "square"].map((s: any) => (
+                      <button key={s} onClick={() => {setMenuStyle(s); setShowStylePicker(false)}} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[#fff8f5]">
+                        <span className="capitalize">{s} View</span>
+                        {menuStyle === s && <Check className="ml-auto w-4 h-4" style={{ color: theme.primaryColor }} />}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
-          ))}
 
-          {/* Empty State */}
-          {displayedItems.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-16 px-4 text-center bg-white rounded-2xl border border-gray-100 border-dashed">
-              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">🍽️</span>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">
-                No dishes found
-              </h3>
-              <p className="text-gray-500">
-                Try selecting a different category.
-              </p>
+            {/* Categories */}
+            <div className="flex gap-8 overflow-x-auto pb-px mb-10 no-scrollbar border-b border-gray-100">
+              {categoryNames.map((category: string) => (
+                <button key={category} onClick={() => setActiveCategory(category)} className="relative pb-4 text-lg font-bold whitespace-nowrap transition-all" style={{ color: activeCategory === category ? theme.secondaryColor : "#9ca3af" }}>
+                  {category}
+                  {activeCategory === category && <span className="absolute bottom-0 left-0 right-0 h-1 rounded-t-full" style={{ backgroundColor: theme.primaryColor }} />}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+
+            {/* MENU ITEMS GRID */}
+            <div className="transition-all duration-300">
+              {menuStyle === "card" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {displayedItems.map((item: any, i: number) => (
+                    <div key={i} className="group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all">
+                      <div className="aspect-[4/3] overflow-hidden">
+                        <img src={item.image} alt={item.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                      </div>
+                      <div className="p-6">
+                        <div className="flex justify-between items-baseline gap-4 mb-2">
+                          <h3 className="text-xl font-bold truncate" style={{ color: theme.secondaryColor }}>{item.name}</h3>
+                          <p className="text-lg font-black shrink-0" style={{ color: theme.primaryColor }}>{item.price}</p>
+                        </div>
+                        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 italic">{item.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {menuStyle === "bar" && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12">
+                  {displayedItems.map((item: any, i: number) => (
+                    <div key={i} className="flex items-center gap-5 py-5 group border-b border-gray-50 last:border-0">
+                      <div className="relative shrink-0 w-28 md:w-36 aspect-[4/3] rounded-xl overflow-hidden shadow-sm">
+                        <img src={item.image} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline gap-2">
+                          <h3 className="font-bold text-lg truncate" style={{ color: theme.secondaryColor }}>{item.name}</h3>
+                          <div className="flex-1 border-b border-dotted border-gray-200 mb-1 hidden sm:block" />
+                          <p className="font-bold text-lg shrink-0" style={{ color: theme.primaryColor }}>{item.price}</p>
+                        </div>
+                        <p className="text-sm text-gray-500 line-clamp-2 mt-1 italic">{item.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {menuStyle === "square" && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {displayedItems.map((item: any, i: number) => (
+                    <div key={i} className="group cursor-pointer">
+                      <div className="aspect-[4/3] rounded-2xl overflow-hidden mb-3 shadow-sm border border-gray-100">
+                        <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      </div>
+                      <h3 className="font-bold text-base line-clamp-1" style={{ color: theme.secondaryColor }}>{item.name}</h3>
+                      <p className="text-sm font-bold mt-0.5" style={{ color: theme.primaryColor }}>{item.price}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       )}
 
-      {offers.length > 0 && (
-            <div className="lg:col-span-1 flex flex-col gap-4">
-              <div className="rounded-[0rem] bg-white p-8 shadow-[0_4px_24px_rgba(240,140,108,0.08)] border border-[#f0e0d8] h-full flex flex-col">
-                <h2
-                  className="text-sm font-bold tracking-widest uppercase mb-6"
-                  style={{ color: theme.primaryColor }}
-                >
-                  Highlights
-                </h2>
-                <div className="flex flex-col gap-3 flex-1 justify-center">
-                  {offers.map((offer: Record<string, any> | string, index: number) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-4 p-4 rounded-2xl bg-[#fff8f5] border border-[#f0e0d8] transition-transform duration-300 hover:-translate-y-1"
-                    >
-                      <div
-                        className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: theme.primaryColor }}
-                      />
-                      <span
-                        className="font-semibold text-lg"
-                        style={{ color: theme.secondaryColor }}
-                      >
-                        {typeof offer === "string" ? offer : offer.title}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-16 md:pt-24">
-        {/* 4. GALLERY */}
+      {/* 4. GALLERY & ATMOSPHERE */}
+      <section className="max-w-6xl mx-auto px-4 md:px-6 pt-24">
         {restaurant.gallery?.length > 0 && (
-          <section className="mb-16 md:mb-24">
-            <div className="flex items-end justify-between gap-4 mb-8">
-              <div>
-                <h2
-                  className="text-3xl md:text-4xl font-bold tracking-tight"
-                  style={{ color: theme.secondaryColor }}
-                >
-                  Atmosphere
-                </h2>
-              </div>
-            </div>
-
-            <div className="relative -mx-4 px-4 md:mx-0 md:px-0">
-              <div className="flex gap-4 md:gap-6 overflow-x-auto pb-8 pt-4 snap-x snap-mandatory no-scrollbar">
-                {restaurant.gallery.map((img: string, index: number) => (
-                  <div
-                    key={index}
-                    className="relative shrink-0 w-72 md:w-96 h-56 md:h-72 rounded-[2rem] overflow-hidden shadow-md snap-center group cursor-pointer"
-                  >
-                    <img
-                      src={img}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                      alt={`Gallery ${index + 1}`}
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
-                      <ZoomIn className="w-10 h-10 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 scale-50 group-hover:scale-100" />
-                    </div>
+          <div className="mb-24">
+            <h2 className="text-3xl md:text-4xl font-bold mb-8" style={{ color: theme.secondaryColor }}>Atmosphere</h2>
+            <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">
+              {restaurant.gallery.map((img: string, index: number) => (
+                <div key={index} className="shrink-0 w-72 md:w-96 h-72 rounded-[2.5rem] overflow-hidden shadow-md snap-center group relative">
+                  <img src={img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Gallery" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                    <ZoomIn className="w-10 h-10 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-                ))}
-              </div>
-
-              <div
-                className="absolute top-0 bottom-8 right-0 w-12 pointer-events-none hidden md:block"
-                style={{
-                  backgroundImage: `linear-gradient(to left, ${theme.backgroundColor}, transparent)`,
-                }}
-              />
+                </div>
+              ))}
             </div>
-          </section>
+          </div>
         )}
 
-        {restaurant.whatsapp && (
-  <a
-    href={`https://wa.me/${restaurant.whatsapp}`}
-    target="_blank"
-    rel="noreferrer"
-    className="fixed bottom-6 right-5 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-2xl animate-[shake_1.5s_ease-in-out_infinite] hover:scale-110 transition-transform"
-    title="Chat on WhatsApp"
-  >
-    <FaWhatsapp className="w-8 h-8" />
-  </a>
-)}
-
-        {/* 5. FIND US */}
-        <section className="bg-white rounded-[2.5rem] border border-[#f0e0d8] shadow-[0_4px_24px_rgba(240,140,108,0.08)] overflow-hidden">
-          {restaurant.location && (
+        {/* 5. LOCATION & DIRECTIONS */}
+        {restaurant.location && (
+          <section className="bg-white rounded-[2.5rem] border border-[#f0e0d8] shadow-sm overflow-hidden mb-12">
             <div className="p-2">
-              <div className="rounded-[2rem] overflow-hidden border border-[#f0e0d8] relative h-80 md:h-[28rem] group">
-                <iframe
-                  src={mapEmbedUrl}
-                  className="w-full h-full filter grayscale-[10%] contrast-[1.05] group-hover:grayscale-0 transition-all duration-500"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
+              <div className="rounded-[2rem] overflow-hidden border border-[#f0e0d8] h-80 md:h-[28rem]">
+                <iframe src={mapEmbedUrl} className="w-full h-full grayscale-[20%] hover:grayscale-0 transition-all duration-700" loading="lazy" />
               </div>
-
-              <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 md:items-center md:justify-between">
-                <div className="flex items-start md:items-center gap-4">
-                  <div
-                    className="p-4 rounded-full bg-[#fff8f5] shrink-0"
-                    style={{ color: theme.primaryColor }}
-                  >
+              <div className="p-6 md:p-10 flex flex-col md:flex-row gap-6 items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 rounded-full bg-[#fff8f5] shrink-0" style={{ color: theme.primaryColor }}>
                     <MapPin className="w-8 h-8" />
                   </div>
                   <div>
-                    <h3
-                      className="text-sm font-bold tracking-widest uppercase mb-1"
-                      style={{ color: theme.primaryColor }}
-                    >
-                      Location
-                    </h3>
-                    <p
-                      className="font-bold text-xl md:text-2xl tracking-tight"
-                      style={{ color: theme.secondaryColor }}
-                    >
-                      {restaurant.location}
-                    </p>
+                    <h3 className="text-sm font-bold tracking-widest uppercase mb-1" style={{ color: theme.primaryColor }}>Location</h3>
+                    <p className="font-bold text-xl md:text-2xl tracking-tight" style={{ color: theme.secondaryColor }}>{restaurant.location}</p>
                   </div>
                 </div>
-
-                <a
-                  href={directionsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-3 rounded-full px-8 py-4 text-white font-bold shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 w-full md:w-auto text-lg"
-                  style={{ backgroundColor: theme.primaryColor }}
-                >
+                <a href={directionsUrl} target="_blank" className="inline-flex items-center justify-center gap-3 rounded-full px-8 py-4 text-white font-bold shadow-lg hover:-translate-y-1 transition-all w-full md:w-auto" style={{ backgroundColor: theme.primaryColor }}>
                   <span>Get Directions</span>
                   <ArrowRight className="w-6 h-6" />
                 </a>
               </div>
             </div>
-          )}
-        </section>
-      </div>
+          </section>
+        )}
+      </section>
 
-      <div className="text-center py-8 mt-6">
-        <p className="text-sm text-gray-400 font-medium">
-          Powered by{" "}
-          <span style={{ color: theme.primaryColor }} className="font-semibold">
-            ScanDish
-          </span>{" "}
-          · Smart QR Scan Experience
-        </p>
-      </div>
+      {/* WHATSAPP FLOAT */}
+      {restaurant.whatsapp && (
+        <a href={`https://wa.me/${restaurant.whatsapp}`} target="_blank" className="fixed bottom-6 right-5 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-2xl hover:scale-110 transition-transform animate-pulse">
+          <FaWhatsapp className="w-8 h-8" />
+        </a>
+      )}
 
-      
+     {/* FOOTER */}
+<footer className="text-center py-8 px-4">
+  <div className="max-w-xs mx-auto mb-2 h-px opacity-10" style={{ backgroundColor: theme.secondaryColor }} />
+  <p className="text-xs md:text-sm text-gray-400 font-medium tracking-wide">
+    Powered by{" "}
+    <Link 
+      href="/" 
+      className="font-black hover:opacity-70 transition-all duration-300"
+      style={{ color: theme.primaryColor }}
+    >
+      ScanDish
+    </Link>{" "}
+    <span className="mx-1">·</span> Smart QR Experience
+  </p>
+  
+  {/* New UI Function: Quick Scroll to Top button */}
+  <button 
+    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+    className="mt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-300 hover:text-gray-500 transition-colors"
+  >
+    Back to top ↑
+  </button>
+</footer>
+
+      <style jsx global>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </main>
   );
 }

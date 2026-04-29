@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ScanDish | Smart QR Scan Experience",
-  description: "Smart QR Scan Experience platform",
+  description: "Smart QR Scan Experience",
 };
 
 export default function RootLayout({

@@ -5,6 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { FaWhatsapp } from "react-icons/fa";
+import {
+  Phone,
+  Wifi,
+  Truck,
+  Car,
+  Music,
+  Coffee,
+  Tag,
+  Flame,
+  CheckCircle2 } from "lucide-react";
 import {
   doc,
   setDoc,
@@ -116,7 +127,8 @@ export default function DashboardPage() {
 
   const [gallery, setGallery] = useState<string[]>([]);
   const [offerInput, setOfferInput] = useState("");
-  const [offers, setOffers] = useState<string[]>([]);
+  const [offerIcon, setOfferIcon] = useState("tag");
+  const [offers, setOffers] = useState<{ text: string; icon: string }[]>([]);
 
   const [saving, setSaving] = useState(false);
 
@@ -277,14 +289,35 @@ if (data.companyId) {
     setGallery(updated);
     setConfirmGalleryRemove(null);
   };
+const suggestOfferIcon = (text: string) => {
+  const t = text.toLowerCase();
 
+  if (t.includes("wifi") || t.includes("password")) return "wifi";
+  if (t.includes("phone") || t.includes("call")) return "phone";
+  if (t.includes("delivery")) return "truck";
+  if (t.includes("parking")) return "car";
+  if (t.includes("music")) return "music";
+  if (t.includes("coffee")) return "coffee";
+  if (t.includes("discount") || t.includes("free")) return "tag";
+  if (t.includes("hot") || t.includes("special")) return "flame";
+
+  return "tag";
+};
   const addOffer = () => {
-    const clean = offerInput.trim();
-    if (!clean) return;
-    setOffers([...offers, clean]);
-    setOfferInput("");
-  };
+  const clean = offerInput.trim();
+  if (!clean) return;
 
+  setOffers([
+    ...offers,
+    {
+      text: clean,
+      icon: offerIcon || suggestOfferIcon(clean),
+    },
+  ]);
+
+  setOfferInput("");
+  setOfferIcon("tag");
+};
   const removeOffer = (index: number) => {
     const updated = [...offers];
     updated.splice(index, 1);
@@ -1227,7 +1260,11 @@ if (data.companyId) {
                     placeholder="Add offer (e.g. Free Wi-Fi, 10% Discount, Happy Hour)"
                     className={inputClass}
                     value={offerInput}
-                    onChange={(e) => setOfferInput(e.target.value)}
+                   onChange={(e) => {
+  const value = e.target.value;
+  setOfferInput(value);
+  setOfferIcon(suggestOfferIcon(value));
+}}
                   />
 
                   <button
@@ -1256,11 +1293,13 @@ if (data.companyId) {
                           className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
                           style={{ backgroundColor: `${BRAND}20` }}
                         >
-                          ✨
+                          {typeof offer === "string" ? "✨" : offer.icon}
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-800">{offer}</p>
+                          <p className="font-medium text-gray-800">
+  {typeof offer === "string" ? offer : offer.text}
+</p>
                         </div>
 
                         {!isConfirming ? (
@@ -1412,6 +1451,30 @@ if (data.companyId) {
           </div>
         </aside>
       </div>
+
+      {/* WhatsApp Help */}
+<div className="fixed bottom-5 left-5 z-50">
+  <a
+    href="https://wa.me/250781822350"
+    target="_blank"
+    rel="noreferrer"
+    className="flex items-center gap-3 rounded-full bg-green-500 px-5 py-3 text-sm font-bold text-white shadow-2xl hover:scale-105 transition-all"
+  >
+    <FaWhatsapp className="w-5 h-5 animate-bounce" />
+    <span>Need help?</span>
+  </a>
+</div>
+
+{/* Call Help */}
+<div className="fixed bottom-5 right-5 z-50">
+  <a
+    href="tel:+250781822350"
+    className="flex items-center gap-3 rounded-full bg-[#2c9af9] px-5 py-3 text-sm font-bold text-white shadow-2xl hover:scale-105 transition-all"
+  >
+    <Phone className="w-5 h-5 animate-pulse" />
+    <span>Call us</span>
+  </a>
+</div>
 
       <footer className="border-t border-[#f4d4ca] bg-white px-4 py-6 md:px-6">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-sm text-gray-500 md:flex-row">
