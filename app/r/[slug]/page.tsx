@@ -21,6 +21,13 @@ import {
   PanelTop,
   ChevronDown,
   Check,
+   Wifi,
+  Truck,
+  Car,
+  Music,
+  Coffee,
+  Tag,
+  Flame,
 } from "lucide-react";
 
 export default function RestaurantPage() {
@@ -74,7 +81,16 @@ if (data.companyId) {
 
     if (slug) loadRestaurant();
   }, [slug]);
-
+const offerIconMap: Record<string, any> = {
+  wifi: Wifi,
+  truck: Truck,
+  car: Car,
+  music: Music,
+  coffee: Coffee,
+  tag: Tag,
+  flame: Flame,
+  phone: Phone,
+};
   const categories = restaurant?.menu || [];
   const offers = restaurant?.offers || [];
 
@@ -104,6 +120,16 @@ if (data.companyId) {
     secondaryColor: restaurant?.theme?.secondaryColor || "#111827",
     backgroundColor: restaurant?.theme?.backgroundColor || "#fff8f5",
   };
+
+  const optimizeImage = (url: string, width = 800) => {
+  if (!url) return "";
+  if (!url.includes("res.cloudinary.com")) return url;
+
+  return url.replace(
+    "/upload/",
+    `/upload/f_auto,q_auto,dpr_auto,w_${width}/`
+  );
+};
 
   const sharePage = async () => {
   const shareUrl = window.location.href;
@@ -231,10 +257,14 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
       style={{ backgroundColor: theme.backgroundColor }}
     >
       {/* 1. IMMERSIVE HERO */}
-      <section className="relative w-full h-[70vh] min-h-[500px] max-h-[800px] flex flex-col items-center justify-center text-center px-4">
+      <section className="relative w-full h-[55vh] min-h-[360px] md:h-[65vh] md:min-h-[450px] flex flex-col items-center justify-center text-center px-4">
         <div className="absolute inset-0 z-0">
           <img
-            src={restaurant.coverImage || "/images/kigali-grill.jpg"}
+            src={
+  restaurant.coverImage
+    ? optimizeImage(restaurant.coverImage, 1400)
+    : "/images/kigali-grill.jpg"
+}
             alt={restaurant.name}
             className="w-full h-full object-cover"
           />
@@ -281,7 +311,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
             {restaurant.phone && (
               <a
                 href={`tel:${restaurant.phone}`}
-                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-md hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
                 title="Call Us"
               >
                 <Phone
@@ -296,7 +326,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                 href={`https://wa.me/${restaurant.whatsapp}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-md hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
                 title="WhatsApp"
               >
                 <FaWhatsapp
@@ -311,7 +341,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                 href={normalizeWebsiteUrl(restaurant.website)}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
+                className="flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-md hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group"
                 title="Website"
               >
                 <Globe
@@ -391,7 +421,10 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                   return (
                     <div key={index} className="inline-flex items-center">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs" style={{ color: theme.primaryColor }}>{icon}</span>
+                        {(() => {
+  const Icon = offerIconMap[icon] || Tag;
+  return <Icon className="w-4 h-4" style={{ color: theme.primaryColor }} />;
+})()}
                         <span className="text-sm md:text-base font-bold" style={{ color: theme.secondaryColor }}>{text}</span>
                       </div>
                       {index !== offers.length - 1 && <span className="mx-3 text-lg font-light opacity-20" style={{ color: theme.secondaryColor }}>,</span>}
@@ -496,7 +529,9 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                   {displayedItems.map((item: any, i: number) => (
                     <div key={i} className="group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all">
                       <div className="aspect-[4/3] overflow-hidden">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                        <img
+  src={optimizeImage(item.image, 600)}
+  loading="lazy" alt={item.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                       </div>
                       <div className="p-6">
                         <div className="flex justify-between items-baseline gap-4 mb-2">
@@ -515,7 +550,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                   {displayedItems.map((item: any, i: number) => (
                     <div key={i} className="flex items-center gap-5 py-5 group border-b border-gray-50 last:border-0">
                       <div className="relative shrink-0 w-28 md:w-36 aspect-[4/3] rounded-xl overflow-hidden shadow-sm">
-                        <img src={item.image} className="h-full w-full object-cover" />
+                        <img src={optimizeImage(item.image, 600)} loading="lazy" className="h-full w-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline gap-2">
@@ -535,7 +570,9 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
                   {displayedItems.map((item: any, i: number) => (
                     <div key={i} className="group cursor-pointer">
                       <div className="aspect-[4/3] rounded-2xl overflow-hidden mb-3 shadow-sm border border-gray-100">
-                        <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        <img
+  src={optimizeImage(item.image, 500)}
+  loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                       </div>
                       <h3 className="font-bold text-base line-clamp-1" style={{ color: theme.secondaryColor }}>{item.name}</h3>
                       <p className="text-sm font-bold mt-0.5" style={{ color: theme.primaryColor }}>{item.price}</p>
@@ -556,7 +593,7 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
             <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">
               {restaurant.gallery.map((img: string, index: number) => (
                 <div key={index} className="shrink-0 w-72 md:w-96 h-72 rounded-[2.5rem] overflow-hidden shadow-md snap-center group relative">
-                  <img src={img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Gallery" />
+                  <img src={optimizeImage(img, 500)} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Gallery" />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
                     <ZoomIn className="w-10 h-10 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>

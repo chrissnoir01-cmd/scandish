@@ -271,24 +271,46 @@ if (data.companyId) {
     setImageUrl("");
   };
 
-  const removeMenuItem = (categoryIndex: number, itemIndex: number) => {
-    const updatedMenu = [...menu];
-    updatedMenu[categoryIndex].items.splice(itemIndex, 1);
+const removeMenuItem = async (categoryIndex: number, itemIndex: number) => {
+  const updatedMenu = [...menu];
 
-    if (updatedMenu[categoryIndex].items.length === 0) {
-      updatedMenu.splice(categoryIndex, 1);
-    }
+  const imageUrl = updatedMenu[categoryIndex].items[itemIndex].image;
 
-    setMenu(updatedMenu);
-    setConfirmMenuRemove(null);
-  };
+  if (imageUrl) {
+    await fetch("/api/delete-image", {
+      method: "POST",
+      body: JSON.stringify({ url: imageUrl }),
+    });
+  }
 
-  const removeGalleryImage = (index: number) => {
-    const updated = [...gallery];
-    updated.splice(index, 1);
-    setGallery(updated);
-    setConfirmGalleryRemove(null);
-  };
+  updatedMenu[categoryIndex].items.splice(itemIndex, 1);
+
+  if (updatedMenu[categoryIndex].items.length === 0) {
+    updatedMenu.splice(categoryIndex, 1);
+  }
+
+  setMenu(updatedMenu);
+  setConfirmMenuRemove(null);
+};
+
+  const removeGalleryImage = async (index: number) => {
+  const url = gallery[index];
+
+  try {
+    await fetch("/api/delete-image", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  } catch (e) {
+    console.error("Cloudinary delete failed");
+  }
+
+  const updated = [...gallery];
+  updated.splice(index, 1);
+  setGallery(updated);
+  setConfirmGalleryRemove(null);
+};
+
 const suggestOfferIcon = (text: string) => {
   const t = text.toLowerCase();
 
