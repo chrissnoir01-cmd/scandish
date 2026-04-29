@@ -27,6 +27,56 @@ type TabKey =
   | "gallery"
   | "offers";
 
+ function TabButton({
+  id,
+  label,
+  emoji,
+  activeTab,
+  setActiveTab,
+}: {
+  id: TabKey;
+  label: string;
+  emoji: string;
+  activeTab: TabKey;
+  setActiveTab: (tab: TabKey) => void;
+}) {
+  const isActive = activeTab === id;
+
+  return (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+        isActive
+          ? "bg-[#f08c6c] text-white shadow-md"
+          : "text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm"
+      }`}
+    >
+      <span className="text-base">{emoji}</span>
+      <span>{label}</span>
+      {isActive && <span className="ml-auto h-2 w-2 rounded-full bg-white" />}
+    </button>
+  );
+}
+
+  const SectionCard = ({
+    title,
+    subtitle,
+    children,
+  }: {
+    title: string;
+    subtitle?: string;
+    children: React.ReactNode;
+  }) => (
+    <section className="overflow-hidden rounded-3xl border border-[#f4d4ca] bg-white shadow-sm">
+      <div className="border-b border-[#f4d4ca] bg-[#fffdfa] px-6 py-4">
+        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+      </div>
+      <div className="p-6">{children}</div>
+    </section>
+  );
+
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -270,7 +320,9 @@ if (data.companyId) {
         return;
       }
 
-      await setDoc(doc(db, "restaurants", user.uid), {
+      await setDoc(
+  doc(db, "restaurants", user.uid),
+  {
         ownerUid: user.uid,
         ownerEmail: user.email,
         name,
@@ -296,8 +348,10 @@ if (data.companyId) {
         menu,
         gallery,
         offers,
-        updatedAt: new Date().toISOString(),
-      });
+           updatedAt: new Date().toISOString(),
+  },
+  { merge: true }
+);
 
       alert("Saved successfully!");
     } catch (error) {
@@ -496,51 +550,7 @@ if (data.companyId) {
   const labelClass =
     "mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-500";
 
-  const TabButton = ({
-    id,
-    label,
-    emoji,
-  }: {
-    id: TabKey;
-    label: string;
-    emoji: string;
-  }) => {
-    const isActive = activeTab === id;
-
-    return (
-      <button
-        onClick={() => setActiveTab(id)}
-        className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-          isActive
-            ? "bg-[#f08c6c] text-white shadow-md"
-            : "text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm"
-        }`}
-      >
-        <span className="text-base">{emoji}</span>
-        <span>{label}</span>
-        {isActive && <span className="ml-auto h-2 w-2 rounded-full bg-white" />}
-      </button>
-    );
-  };
-
-  const SectionCard = ({
-    title,
-    subtitle,
-    children,
-  }: {
-    title: string;
-    subtitle?: string;
-    children: React.ReactNode;
-  }) => (
-    <section className="overflow-hidden rounded-3xl border border-[#f4d4ca] bg-white shadow-sm">
-      <div className="border-b border-[#f4d4ca] bg-[#fffdfa] px-6 py-4">
-        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
-      </div>
-      <div className="p-6">{children}</div>
-    </section>
-  );
-
+ 
   if (checkingAuth) {
     return (
       <main className="min-h-screen bg-[#fff8f5] p-6">
@@ -601,7 +611,7 @@ if (data.companyId) {
           <span className="font-semibold">
             {daysRemaining} day{daysRemaining > 1 ? "s" : ""}
           </span>.
-          Contact ScanDish to renew your plan.
+          Contact ScanDish (+250781822350) to renew your plan.
         </p>
       </div>
     )}
@@ -649,9 +659,16 @@ if (data.companyId) {
           </div>
 
           <nav className="space-y-2 rounded-3xl border border-[#f4d4ca] bg-[#fffaf8] p-3">
-            {tabs.map((tab) => (
-              <TabButton key={tab.id} id={tab.id} label={tab.label} emoji={tab.emoji} />
-            ))}
+           {tabs.map((tab) => (
+  <TabButton
+    key={tab.id}
+    id={tab.id}
+    label={tab.label}
+    emoji={tab.emoji}
+    activeTab={activeTab}
+    setActiveTab={setActiveTab}
+  />
+))}
           </nav>
 
           <button
