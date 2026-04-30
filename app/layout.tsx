@@ -1,33 +1,48 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "ScanDish | Smart QR Scan Experience",
-  description: "Smart QR Scan Experience",
+  metadataBase: new URL("https://scandish.online"),
+  title: {
+    default: "ScanDish | Smart QR Scan Experience",
+    template: "%s | ScanDish",
+  },
+  description:
+    "ScanDish helps restaurants create smart QR-powered digital menus. Customers scan and instantly view menus, gallery, offers, and contact info.",
+  keywords: [
+    "QR menu",
+    "restaurant menu Rwanda",
+    "digital menu",
+    "ScanDish",
+    "restaurant QR system",
+  ],
+  openGraph: {
+    title: "ScanDish",
+    description: "Smart QR menus for modern restaurants.",
+    url: "https://scandish.online",
+    siteName: "ScanDish",
+    images: [{ url: "/images/hero.png", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ScanDish",
+    description: "Create QR menus for your restaurant instantly.",
+    images: ["/images/hero.png"],
+  },
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }
