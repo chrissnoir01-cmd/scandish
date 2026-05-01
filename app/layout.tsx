@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   },
   description:
     "ScanDish helps restaurants create smart QR-powered digital menu pages with menus, gallery, offers, contact links, and map directions.",
+   verification: {
+    google: "gVcvzc5JfbugE90yOxurJzR-FqzM5cUlYDFrZCmfLeo",
+  },  
   keywords: [
     "ScanDish",
     "QR menu",
