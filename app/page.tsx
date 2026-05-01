@@ -31,51 +31,6 @@ export default function HomePage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [scrolled, setScrolled] = useState(false);
-const schemaData = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "ScanDish",
-  applicationCategory: "BusinessApplication",
-  operatingSystem: "Web",
-  url: "https://scandish.online",
-  logo: "https://scandish.online/images/logo.jpg",
-  description:
-    "ScanDish helps restaurants create smart QR-powered digital menu pages with menu management, gallery, offers, contact links, and map directions.",
-  offers: [
-    {
-      "@type": "Offer",
-      name: "6 Months Plan",
-      price: "35000",
-      priceCurrency: "RWF",
-    },
-    {
-      "@type": "Offer",
-      name: "1 Year Plan",
-      price: "60000",
-      priceCurrency: "RWF",
-    },
-    {
-      "@type": "Offer",
-      name: "One-time Restaurant Setup",
-      price: "15000",
-      priceCurrency: "RWF",
-    },
-  ],
-  contactPoint: {
-    "@type": "ContactPoint",
-    telephone: "+250781822350",
-    contactType: "customer support",
-    email: "support@scandish.online",
-    areaServed: "RW",
-    availableLanguage: ["English", "French", "Kinyarwanda"],
-  },
-  sameAs: [
-    "https://instagram.com/scandish_app",
-    "https://tiktok.com/@scandish_app",
-    "https://facebook.com/scandish_app",
-    "https://x.com/scandish_app",
-  ],
-};
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
@@ -84,12 +39,6 @@ const schemaData = {
 
   return (
   <main className="min-h-screen bg-white text-[#1a1a1a] selection:bg-[#f08c6c] selection:text-white overflow-x-hidden">
-       <script
-    type="application/ld+json"
-    dangerouslySetInnerHTML={{
-      __html: JSON.stringify(schemaData).replace(/</g, "\\u003c"),
-    }}
-  />
       {/* 1. STICKY NAVBAR */}
 
       <header 
