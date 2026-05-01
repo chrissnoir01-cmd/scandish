@@ -58,46 +58,7 @@ export default function RestaurantPage() {
 
         const data = snapshot.docs[0].data();
         setRestaurant(data);
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/restaurant?slug=${params.slug}`,
-      { cache: "no-store" }
-    );
 
-    const restaurant = await res.json();
-
-    if (!restaurant) {
-      return {
-        title: "Restaurant not found | ScanDish",
-      };
-    }
-
-    return {
-      title: `${restaurant.name} | ScanDish`,
-      description:
-        restaurant.description ||
-        "View menu, gallery and contact information.",
-      openGraph: {
-        title: restaurant.name,
-        description: restaurant.description || "",
-        images: [
-          {
-            url: restaurant.heroImage || "/images/hero.png",
-          },
-        ],
-      },
-    };
-  } catch {
-    return {
-      title: "ScanDish",
-    };
-  }
-}
 // fetch company
 if (data.companyId) {
   const companyQuery = query(
