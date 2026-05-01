@@ -42,7 +42,35 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        
+        {/* 🔥 SCHEMA MARKUP */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "ScanDish",
+              url: "https://scandish.online",
+              logo: "https://scandish.online/images/logo.jpg",
+              contactPoint: [
+                {
+                  "@type": "ContactPoint",
+                  telephone: "+250781822350",
+                  contactType: "customer support",
+                },
+              ],
+              sameAs: [
+                "https://instagram.com/scandish",
+                "https://facebook.com/scandish"
+              ],
+            }),
+          }}
+        />
+
+        {children}
+      </body>
     </html>
   );
 }
