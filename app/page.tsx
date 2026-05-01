@@ -31,7 +31,51 @@ export default function HomePage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [scrolled, setScrolled] = useState(false);
-
+const schemaData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "ScanDish",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: "https://scandish.online",
+  logo: "https://scandish.online/images/logo.jpg",
+  description:
+    "ScanDish helps restaurants create smart QR-powered digital menu pages with menu management, gallery, offers, contact links, and map directions.",
+  offers: [
+    {
+      "@type": "Offer",
+      name: "6 Months Plan",
+      price: "35000",
+      priceCurrency: "RWF",
+    },
+    {
+      "@type": "Offer",
+      name: "1 Year Plan",
+      price: "60000",
+      priceCurrency: "RWF",
+    },
+    {
+      "@type": "Offer",
+      name: "One-time Restaurant Setup",
+      price: "15000",
+      priceCurrency: "RWF",
+    },
+  ],
+  contactPoint: {
+    "@type": "ContactPoint",
+    telephone: "+250781822350",
+    contactType: "customer support",
+    email: "support@scandish.online",
+    areaServed: "RW",
+    availableLanguage: ["English", "French", "Kinyarwanda"],
+  },
+  sameAs: [
+    "https://instagram.com/scandish_app",
+    "https://tiktok.com/@scandish_app",
+    "https://facebook.com/scandish_app",
+    "https://x.com/scandish_app",
+  ],
+};
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
@@ -39,8 +83,15 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-[#1a1a1a] selection:bg-[#f08c6c] selection:text-white overflow-x-hidden">
+  <main className="min-h-screen bg-white text-[#1a1a1a] selection:bg-[#f08c6c] selection:text-white overflow-x-hidden">
+       <script
+    type="application/ld+json"
+    dangerouslySetInnerHTML={{
+      __html: JSON.stringify(schemaData).replace(/</g, "\\u003c"),
+    }}
+  />
       {/* 1. STICKY NAVBAR */}
+
       <header 
         className={`fixed top-0 w-full z-50 transition-all duration-500 ${
           scrolled ? "bg-white/90 backdrop-blur-md py-3 shadow-sm border-b border-gray-100" : "bg-transparent py-6"
@@ -55,18 +106,24 @@ export default function HomePage() {
               Scan<span style={{ color: BRAND_COLOR }}>Dish</span>
             </span>
           </Link>
-
-          <nav className="hidden lg:flex items-center gap-10">
-            {['Features', 'How it Works', 'Why ScanDish', 'FAQ'].map((item) => (
-              <a 
-                key={item} 
-                href={`#${item.toLowerCase().replace(/ /g, '-')}`} 
-                className="text-sm font-bold text-gray-500 hover:text-[#f08c6c] transition-colors"
-              >
-                {item}
-              </a>
-            ))}
-          </nav>
+<nav className="hidden lg:flex items-center gap-10">
+  {[
+    { label: "Features", href: "#features" },
+    { label: "How it Works", href: "#how-it-works" },
+    { label: "Why ScanDish", href: "#why-scandish" },
+    { label: "Pricing", href: "#pricing" },
+    { label: "Contact", href: "#contact" },
+    { label: "FAQ", href: "#faq" },
+  ].map((item) => (
+    <a
+      key={item.label}
+      href={item.href}
+      className="text-sm font-bold text-gray-500 hover:text-[#f08c6c] transition-colors"
+    >
+      {item.label}
+    </a>
+  ))}
+</nav>
 
           <div className="flex items-center gap-4">
             <Link
@@ -290,7 +347,115 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+<section id="pricing" className="py-24 bg-[#fffcfb] px-6">
+  <div className="max-w-6xl mx-auto">
+    <div className="text-center mb-16">
+      <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 tracking-tight">
+        Simple Pricing for Restaurants
+      </h2>
+      <div className="w-24 h-1.5 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
+      <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+        One-time setup fee plus flexible subscription plans designed to help your business grow.
+      </p>
+    </div>
 
+    <div className="grid md:grid-cols-3 gap-8 items-stretch">
+      
+      {/* Setup Fee */}
+      <div className="group bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col">
+        <div className="mb-8">
+          <h3 className="text-xl font-bold text-gray-800 mb-2">Setup</h3>
+          <p className="text-gray-500 text-sm">One-time kickstart</p>
+        </div>
+
+        <div className="mb-8">
+          <span className="text-4xl font-black text-gray-900">15,000</span>
+          <span className="text-gray-500 font-medium ml-1">RWF</span>
+        </div>
+
+        <ul className="space-y-4 mb-8 flex-grow">
+          <li className="flex items-center text-gray-600 text-sm">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Professional page creation
+          </li>
+          <li className="flex items-center text-gray-600 text-sm">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Menu items upload
+          </li>
+        </ul>
+
+        <div className="pt-6 border-t border-gray-50 mt-auto">
+          <p className="text-xs text-center text-gray-400 font-medium">Get started today</p>
+        </div>
+      </div>
+
+      {/* 6 Months - Featured */}
+      <div className="relative group bg-white border-2 border-[#f08c6c] rounded-[2rem] p-8 shadow-2xl transform md:scale-105 z-10 flex flex-col">
+        <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-[#f08c6c] text-white px-6 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase">
+          Most Popular
+        </div>
+
+        <div className="mb-8">
+          <h3 className="text-xl font-bold text-gray-800 mb-2">6 Months</h3>
+          <p className="text-gray-500 text-sm">Standard commitment</p>
+        </div>
+
+        <div className="mb-8">
+          <span className="text-5xl font-black text-[#f08c6c]">35,000</span>
+          <span className="text-gray-500 font-medium ml-1">RWF</span>
+        </div>
+
+        <ul className="space-y-4 mb-8 flex-grow">
+          <li className="flex items-center text-gray-700 text-sm font-medium">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Perfect for growing venues
+          </li>
+          <li className="flex items-center text-gray-700 text-sm font-medium">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Full platform access
+          </li>
+          <li className="flex items-center text-gray-700 text-sm font-medium">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Priority support
+          </li>
+        </ul>
+
+        <button className="w-full py-4 bg-[#f08c6c] hover:bg-[#d97a5a] text-white font-bold rounded-xl transition-colors shadow-lg shadow-[#f08c6c]/20">
+          Select Plan
+        </button>
+      </div>
+
+      {/* 1 Year */}
+      <div className="group bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col">
+        <div className="mb-8">
+          <h3 className="text-xl font-bold text-gray-800 mb-2">1 Year</h3>
+          <p className="text-gray-500 text-sm">Maximum value</p>
+        </div>
+
+        <div className="mb-8">
+          <span className="text-4xl font-black text-gray-900">60,000</span>
+          <span className="text-gray-500 font-medium ml-1">RWF</span>
+        </div>
+
+        <ul className="space-y-4 mb-8 flex-grow">
+          <li className="flex items-center text-gray-600 text-sm">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Best value for long-term
+          </li>
+          <li className="flex items-center text-gray-600 text-sm">
+            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            2 months free equivalent
+          </li>
+        </ul>
+
+        <div className="pt-6 border-t border-gray-50 mt-auto">
+          <p className="text-xs text-center text-gray-400 font-medium">Sustainable growth</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
       {/* 6. WHY SCANDISH SECTION (FEATURING food3.jpg again for consistency) */}
       <section id="why-scandish" className="py-32 bg-white">
         <div className="max-w-7xl mx-auto px-6">
@@ -330,6 +495,7 @@ export default function HomePage() {
       </section>
 
       {/* 7. CTA BANNER */}
+      
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div 
@@ -389,6 +555,61 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section id="contact" className="py-24 px-6 bg-white overflow-hidden">
+  <div className="max-w-4xl mx-auto text-center">
+    
+    {/* Header with Animation */}
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <h2 className="text-4xl md:text-5xl font-extrabold mb-4 text-gray-900 tracking-tight">
+        Get in Touch
+      </h2>
+      <div className="w-16 h-1 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
+      <p className="text-gray-600 text-lg mb-12 max-w-md mx-auto">
+        Ready to digitize your menu? Our team is here to help you get started.
+      </p>
+    </div>
+
+    <div className="grid md:grid-cols-2 gap-6">
+      
+      {/* Phone Card */}
+      <a 
+        href="tel:0781822350"
+        className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-left-8 duration-700"
+      >
+        <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+          <svg className="w-6 h-6 text-[#f08c6c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+          </svg>
+        </div>
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Call Us</h3>
+        <p className="text-2xl font-bold text-gray-800">0781822350</p>
+      </a>
+
+      {/* Email Card */}
+      <a 
+        href="mailto:support@scandish.online"
+        className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-right-8 duration-1000"
+      >
+        <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+          <svg className="w-6 h-6 text-[#f08c6c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Email Us</h3>
+        <p className="text-2xl font-bold text-gray-800 truncate">support@scandish.online</p>
+      </a>
+
+    </div>
+
+    {/* Subtle footer element for the contact section */}
+    <div className="mt-16 opacity-50">
+      <p className="text-sm text-gray-500 font-medium tracking-tighter italic">
+        Typically responds within 2 hours
+      </p>
+    </div>
+  </div>
+</section>
+
       {/* 9. FOOTER */}
       <footer className="bg-gray-200 pt-32 pb-12 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6">
@@ -419,15 +640,16 @@ export default function HomePage() {
                 <li><a href="#features" className="hover:text-[#f08c6c]">Branding</a></li>
               </ul>
             </div>
-
-            <div>
-              <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">Resources</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-500">
-                <li><a href="#how-it-works" className="hover:text-[#f08c6c]">How It Works</a></li>
-                <li><a href="#faq" className="hover:text-[#f08c6c]">FAQ</a></li>
-                <li><Link href="/login" className="hover:text-[#f08c6c]">Portal Login</Link></li>
-              </ul>
-            </div>
+ <div>
+  <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">MAIN LINKS</h5>
+    <ul className="space-y-4 text-sm font-bold text-gray-500">
+      <li><a href="/login" className="hover:text-[#f08c6c]">Login</a></li>
+      <li><a href="/company-signup" className="hover:text-[#f08c6c]">Signup</a></li>
+      <li><a href="#pricing" className="hover:text-[#f08c6c]">Pricing</a></li>
+      <li><a href="#features" className="hover:text-[#f08c6c]">Features</a></li>
+      <li><a href="#contact" className="hover:text-[#f08c6c]">Contact</a></li>
+    </ul>  
+  </div>
 
             <div>
               <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">Legal</h5>
@@ -446,6 +668,6 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
-    </div>
+    </main>
   );
 }
