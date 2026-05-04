@@ -12,6 +12,8 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
 
 const BRAND = "#f08c6c";
@@ -25,6 +27,7 @@ export default function MasterAdminPage() {
   const [companies, setCompanies] = useState<any[]>([]);
   const [search, setSearch] = useState("");
 
+  const [creatingCompany, setCreatingCompany] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [managerName, setManagerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -97,9 +100,26 @@ useEffect(() => {
   };
 
   const createCompany = async () => {
-    if (!companyName || !managerName || !phone) {
-      alert("Company name, manager name, and phone are required");
-      return;
+  if (creatingCompany) return;
+
+  if (!companyName || !managerName || !phone) {
+    alert("Company name, manager name, and phone are required");
+    return;
+  }
+
+  try {
+    setCreatingCompany(true);
+
+    // 🔒 PREVENT DUPLICATE BY EMAIL
+    if (email) {
+      const existing = await getDocs(
+        query(collection(db, "companies"), where("email", "==", email))
+      );
+
+      if (!existing.empty) {
+        alert("Company with this email already exists.");
+        return;
+      }
     }
 
     const inviteCode = generateInviteCode();
@@ -128,19 +148,21 @@ useEffect(() => {
 
     alert(`Company created.\nInvite Code: ${inviteCode}`);
 
+    // reset
     setCompanyName("");
     setManagerName("");
     setPhone("");
     setEmail("");
     setLocation("");
-    setCertificateNumber("");
-    setBusinessType("Restaurant");
-    setSubscriptionStart("");
-    setSubscriptionEnd("");
-    setNotes("");
-    setCertificateUrl("");
+
     loadCompanies();
-  };
+  } catch (e) {
+    console.error(e);
+    alert("Failed to create company");
+  } finally {
+    setCreatingCompany(false);
+  }
+};
 
   const logout = async () => {
   await signOut(auth);
@@ -418,12 +440,12 @@ const renewSubscription = async () => {
               />
 
               <button
-                onClick={createCompany}
-                className="w-full px-5 py-3 rounded-2xl text-white font-semibold"
-                style={{ backgroundColor: BRAND }}
-              >
-                Create Company
-              </button>
+  onClick={createCompany}
+  disabled={creatingCompany}
+>
+  {creatingCompany ? "Creating..." : "Create Company"}
+</button>
+          
             </div>
           </div>
 

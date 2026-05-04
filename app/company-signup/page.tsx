@@ -28,122 +28,100 @@ export default function CompanySignupPage() {
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
-    if (!email || !inviteCode || !password || !confirmPassword) {
-      alert("Fill all fields");
+  if (!email || !inviteCode || !password || !confirmPassword) {
+    alert("Fill all fields");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    alert("Passwords do not match");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    // 1️⃣ FIND COMPANY BY INVITE ONLY
+    const q = query(
+      collection(db, "companies"),
+      where("inviteCode", "==", inviteCode.trim())
+    );
+
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      alert("Invalid invite code");
       return;
     }
 
-    if (password !== confirmPassword) {
-      alert("Passwords do not match");
+    const companyDoc = snap.docs[0];
+    const company = companyDoc.data();
+
+    if (company.inviteUsed) {
+      alert("Invite already used");
       return;
     }
 
-    if (password.length < 6) {
-      alert("Password must be at least 6 characters");
-      return;
+    // 2️⃣ CREATE AUTH USER
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email.trim().toLowerCase(),
+      password
+    );
+
+    const user = userCredential.user;
+
+    // 3️⃣ CREATE USER ROLE
+    await setDoc(doc(db, "users", user.uid), {
+      email: user.email,
+      role: "restaurant",
+      createdAt: new Date().toISOString(),
+    });
+
+    // 4️⃣ CREATE RESTAURANT (IMPORTANT)
+    const slug = company.companyName
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+    await setDoc(doc(db, "restaurants", user.uid), {
+      ownerUid: user.uid,
+      companyId: companyDoc.id,
+
+      name: company.companyName,
+      slug: slug,
+
+      phone: company.phone,
+      location: company.location,
+
+      status: company.status,
+
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // 5️⃣ UPDATE COMPANY
+    await updateDoc(doc(db, "companies", companyDoc.id), {
+      ownerUid: user.uid,
+      inviteUsed: true,
+    });
+
+    // ✅ SUCCESS
+    alert("Account created successfully!");
+    router.push("/dashboard");
+
+  } catch (error: any) {
+    console.error(error);
+
+    if (error.code === "auth/email-already-in-use") {
+      alert("Email already exists. Try login.");
+    } else {
+      alert("Signup failed. Try again.");
     }
-
-    try {
-      setLoading(true);
-
-      const q = query(
-        collection(db, "companies"),
-        where("email", "==", email.trim().toLowerCase()),
-        where("inviteCode", "==", inviteCode.trim())
-      );
-
-      const snap = await getDocs(q);
-
-      if (snap.empty) {
-        alert("Invalid email or invite code");
-        setLoading(false);
-        return;
-      }
-
-      const companyDoc = snap.docs[0];
-      const company = companyDoc.data();
-
-      if (company.inviteUsed) {
-        alert("This invite code has already been used");
-        setLoading(false);
-        return;
-      }
-
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim().toLowerCase(),
-        password
-      );
-
-      const user = userCredential.user;
-
-      await updateDoc(doc(db, "companies", companyDoc.id), {
-        ownerUid: user.uid,
-        inviteUsed: true,
-        updatedAt: new Date().toISOString(),
-      });
-
-      await setDoc(doc(db, "restaurants", user.uid), {
-        ownerUid: user.uid,
-        ownerEmail: email.trim().toLowerCase(),
-        companyId: companyDoc.id,
-
-        name: company.companyName || "",
-        slug:
-          company.companyName
-            ?.toLowerCase()
-            .trim()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/(^-|-$)/g, "") || "",
-
-        description: "",
-        about: "",
-        logo: "",
-        coverImage: "",
-
-        phone: company.phone || "",
-        whatsapp: company.phone || "",
-        website: "",
-        location: company.location || "",
-
-        social: {
-          instagram: "",
-          facebook: "",
-          tiktok: "",
-        },
-
-        theme: {
-          primaryColor: BRAND,
-          secondaryColor: "#111827",
-          backgroundColor: "#fff8f5",
-        },
-
-        menu: [],
-        gallery: [],
-        offers: [],
-
-        status: company.status || "inactive",
-        subscriptionStart: company.subscriptionStart || "",
-        subscriptionEnd: company.subscriptionEnd || "",
-
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      alert("Account created successfully!");
-      router.push("/dashboard");
-    } catch (error: any) {
-      console.error(error);
-
-      if (error.code === "auth/email-already-in-use") {
-        alert("This email already has an account. Try login.");
-      } else {
-        alert("Signup failed. Check your information and try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <main className="min-h-screen bg-[#fff8f5] flex items-center justify-center px-4">
