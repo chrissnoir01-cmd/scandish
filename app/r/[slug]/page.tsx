@@ -269,9 +269,9 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
             alt={restaurant.name}
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/20 to-black/55" />
           <div
-            className="absolute inset-0 opacity-30 mix-blend-multiply"
+            className="absolute inset-0 opacity-10 mix-blend-multiply"
             style={{ backgroundColor: theme.primaryColor }}
           />
         </div>
