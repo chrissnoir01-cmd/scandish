@@ -3,6 +3,9 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://scandish.online"),
+  alternates: {
+  canonical: "https://scandish.online",
+},
   title: {
     default: "ScanDish | Smart QR Menu Platform for Restaurants",
     template: "%s | ScanDish",
