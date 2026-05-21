@@ -94,6 +94,10 @@ export default function CompanySignupPage() {
       phone: company.phone,
       location: company.location,
 
+      plan: "standard",
+      premiumEnabled: false,
+      premiumTemplate: "default",
+
       status: company.status,
 
       createdAt: new Date().toISOString(),

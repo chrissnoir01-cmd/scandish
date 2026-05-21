@@ -142,6 +142,17 @@ useEffect(() => {
       inviteUsed: false,
       logo: "",
       certificateUrl,
+      slug: companyName
+       .toLowerCase()
+       .trim()
+       .replace(/[^a-z0-9]+/g, "-")
+       .replace(/(^-|-$)/g, ""),
+
+      plan: "standard",
+
+      premiumEnabled: false,
+
+      premiumTemplate: "default",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -191,6 +202,7 @@ useEffect(() => {
 };
 
 const renewSubscription = async () => {
+
   if (!renewCompany) return;
 
   const today = new Date();
@@ -211,6 +223,31 @@ const renewSubscription = async () => {
 
   setRenewCompany(null);
   loadCompanies();
+};
+
+const updatePremiumField = async (
+  company: any,
+  field: "plan" | "premiumEnabled" | "premiumTemplate",
+  value: any
+) => {
+  try {
+    await updateDoc(doc(db, "companies", company.id), {
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (company.ownerUid) {
+      await updateDoc(doc(db, "restaurants", company.ownerUid), {
+        [field]: value,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    loadCompanies();
+  } catch (error) {
+    console.error(error);
+    alert("Premium update failed");
+  }
 };
 
   const uploadFileToCloudinary = async (file: File) => {
@@ -540,6 +577,9 @@ const renewSubscription = async () => {
                     </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-3">
+                 
+               
+
   <label className="flex items-center gap-3 rounded-2xl border border-[#f2ddd6] bg-white px-4 py-2 cursor-pointer">
     <input
       type="checkbox"
@@ -551,6 +591,62 @@ const renewSubscription = async () => {
       {company.status === "active" ? "Active" : "Inactive"}
     </span>
   </label>
+
+  <div className="mt-4 w-full rounded-2xl border border-[#f2ddd6] bg-white p-4">
+  <p className="mb-3 text-sm font-bold" style={{ color: BRAND }}>
+    Premium Controls
+  </p>
+
+  <div className="grid gap-3 md:grid-cols-3">
+    <select
+      className="input"
+      value={company.plan || "standard"}
+      onChange={(e) =>
+        updatePremiumField(company, "plan", e.target.value)
+      }
+    >
+      <option value="standard">Standard</option>
+      <option value="premium">Premium</option>
+    </select>
+
+    <select
+      className="input"
+      value={company.premiumEnabled ? "true" : "false"}
+      onChange={(e) =>
+        updatePremiumField(
+          company,
+          "premiumEnabled",
+          e.target.value === "true"
+        )
+      }
+    >
+      <option value="false">Premium OFF</option>
+      <option value="true">Premium ON</option>
+    </select>
+
+    <select
+      className="input"
+      value={company.premiumTemplate || "default"}
+      onChange={(e) =>
+        updatePremiumField(company, "premiumTemplate", e.target.value)
+      }
+    >
+      <option value="default">Default Template</option>
+      <option value="camellia">Camellia Template</option>
+    </select>
+  </div>
+
+  {company.plan === "premium" && company.premiumEnabled && (
+    <a
+      href={`/r/${company.slug}/premium`}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-3 inline-block rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+    >
+      Open Premium Page
+    </a>
+  )}
+</div>
 
   {/* 🔥 NEW RENEW BUTTON */}
   <button

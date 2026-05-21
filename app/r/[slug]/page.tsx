@@ -2,7 +2,7 @@
 
 import { Metadata } from "next";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { db } from "../../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { FaInstagram, FaFacebook, FaTiktok, FaWhatsapp } from "react-icons/fa6";
@@ -33,6 +33,7 @@ import {
 
 export default function RestaurantPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params?.slug as string;
 
   const [restaurant, setRestaurant] = useState<Record<string, any> | null>(null);
@@ -57,6 +58,10 @@ export default function RestaurantPage() {
         }
 
         const data = snapshot.docs[0].data();
+        if (data.plan === "premium" && data.premiumEnabled) {
+  router.replace(`/r/${slug}/premium`);
+  return;
+}
         setRestaurant(data);
 
 // fetch company
