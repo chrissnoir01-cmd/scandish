@@ -108,13 +108,21 @@ const offerIconMap: Record<string, any> = {
       ? overviewItems
       : categories.find((cat: Record<string, any>) => cat.category === activeCategory)?.items || [];
 
-  const displayedItems = searchQuery.trim()
+  const displayedItems = (
+  searchQuery.trim()
     ? filteredByCategory.filter(
         (item: Record<string, any>) =>
           item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.description?.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : filteredByCategory;
+    : filteredByCategory
+).sort((a: Record<string, any>, b: Record<string, any>) => {
+  const aHasImage = Boolean(a.image);
+  const bHasImage = Boolean(b.image);
+
+  if (aHasImage === bHasImage) return 0;
+  return aHasImage ? -1 : 1;
+});
 
   const theme = {
     primaryColor: restaurant?.theme?.primaryColor || "#f08c6c",
@@ -523,68 +531,272 @@ const isValid = isCompanyActive && (isWithinGracePeriod || new Date(company?.sub
               ))}
             </div>
 
-            {/* MENU ITEMS GRID */}
-            <div className="transition-all duration-300">
-              {menuStyle === "card" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {displayedItems.map((item: any, i: number) => (
-                    <div key={i} className="group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all">
-                      <div className="aspect-[4/3] overflow-hidden">
-                        <img
-  src={optimizeImage(item.image, 600)}
-  loading="lazy" alt={item.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
-                      </div>
-                      <div className="p-6">
-                        <div className="flex justify-between items-baseline gap-4 mb-2">
-                          <h3 className="text-xl font-bold truncate" style={{ color: theme.secondaryColor }}>{item.name}</h3>
-                          <p className="text-lg font-black shrink-0" style={{ color: theme.primaryColor }}>{item.price}</p>
-                        </div>
-                        <p className="text-gray-500 text-sm leading-relaxed line-clamp-2 italic">{item.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* MENU ITEMS GRID */}
+<div className="transition-all duration-300">
 
-              {menuStyle === "bar" && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12">
-                  {displayedItems.map((item: any, i: number) => (
-                    <div key={i} className="flex items-center gap-5 py-5 group border-b border-gray-50 last:border-0">
-                      <div className="relative shrink-0 w-28 md:w-36 aspect-[4/3] rounded-xl overflow-hidden shadow-sm">
-                        <img src={optimizeImage(item.image, 600)} loading="lazy" className="h-full w-full object-cover" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline gap-2">
-                          <h3 className="font-bold text-lg truncate" style={{ color: theme.secondaryColor }}>{item.name}</h3>
-                          <div className="flex-1 border-b border-dotted border-gray-200 mb-1 hidden sm:block" />
-                          <p className="font-bold text-lg shrink-0" style={{ color: theme.primaryColor }}>{item.price}</p>
-                        </div>
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1 italic">{item.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+  {/* CARD STYLE */}
+  {menuStyle === "card" && (
 
-              {menuStyle === "square" && (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                  {displayedItems.map((item: any, i: number) => (
-                    <div key={i} className="group cursor-pointer">
-                      <div className="aspect-[4/3] rounded-2xl overflow-hidden mb-3 shadow-sm border border-gray-100">
-                        <img
-  src={optimizeImage(item.image, 500)}
-  loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      </div>
-                      <h3 className="font-bold text-base line-clamp-1" style={{ color: theme.secondaryColor }}>{item.name}</h3>
-                      <p className="text-sm font-bold mt-0.5" style={{ color: theme.primaryColor }}>{item.price}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+    <div className="space-y-12">
+
+      {/* IMAGE ITEMS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+        {displayedItems
+          .filter((item:any)=>item.image)
+          .map((item:any,i:number)=>(
+
+          <div
+            key={i}
+            className="group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all"
+          >
+
+            <div className="aspect-[4/3] overflow-hidden">
+
+              <img
+                src={optimizeImage(item.image,600)}
+                loading="lazy"
+                alt={item.name}
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              />
+
             </div>
+
+            <div className="p-6">
+
+              <div className="flex justify-between gap-4 mb-2">
+
+                <h3
+                  className="text-xl font-bold"
+                  style={{
+                    color:theme.secondaryColor
+                  }}
+                >
+                  {item.name}
+                </h3>
+
+                <p
+                  className="font-black text-lg"
+                  style={{
+                    color:theme.primaryColor
+                  }}
+                >
+                  {item.price}
+                </p>
+
+              </div>
+
+              {item.description&&(
+
+                <p className="italic text-gray-500">
+
+                  {item.description}
+
+                </p>
+
+              )}
+
+            </div>
+
           </div>
-        </section>
+
+        ))}
+
+      </div>
+
+      {/* TEXT ONLY ITEMS */}
+
+      {displayedItems.some((item:any)=>!item.image)&&(
+
+        <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-[#f0e0d8]/40">
+
+          <div className="space-y-5">
+
+            {displayedItems
+              .filter((item:any)=>!item.image)
+              .map((item:any,i:number)=>(
+
+              <div
+                key={i}
+                className="pb-4 border-b border-gray-100 last:border-0"
+              >
+
+                <div className="flex items-baseline gap-3">
+
+                  <h3
+                    className="font-bold text-lg"
+                    style={{
+                      color:theme.secondaryColor
+                    }}
+                  >
+                    {item.name}
+                  </h3>
+
+                  <div className="flex-1 border-b border-dotted border-gray-300"/>
+
+                  <span
+                    className="italic font-semibold whitespace-nowrap"
+                    style={{
+                      color:theme.primaryColor
+                    }}
+                  >
+                    {item.price}
+                  </span>
+
+                </div>
+
+                {item.description&&(
+
+                  <p className="mt-2 italic text-gray-600 leading-relaxed">
+
+                    {item.description}
+
+                  </p>
+
+                )}
+
+              </div>
+
+            ))}
+
+          </div>
+
+        </div>
+
       )}
+
+    </div>
+
+  )}
+
+  {/* BAR STYLE */}
+
+  {menuStyle==="bar"&&(
+
+    <div className="space-y-6">
+
+      {displayedItems.map((item:any,i:number)=>(
+
+        <div
+          key={i}
+          className="flex gap-5 pb-5 border-b border-gray-100"
+        >
+
+          {item.image&&(
+
+            <div className="w-28 aspect-[4/3] rounded-xl overflow-hidden shrink-0">
+
+              <img
+                src={optimizeImage(item.image,600)}
+                loading="lazy"
+                alt={item.name}
+                className="w-full h-full object-cover"
+              />
+
+            </div>
+
+          )}
+
+          <div className="flex-1">
+
+            <div className="flex gap-3 items-baseline">
+
+              <h3
+                className="font-bold"
+                style={{
+                  color:theme.secondaryColor
+                }}
+              >
+                {item.name}
+              </h3>
+
+              <div className="flex-1 border-b border-dotted border-gray-300"/>
+
+              <span
+                className="font-semibold"
+                style={{
+                  color:theme.primaryColor
+                }}
+              >
+                {item.price}
+              </span>
+
+            </div>
+
+            {item.description&&(
+
+              <p className="italic text-gray-500 mt-1">
+
+                {item.description}
+
+              </p>
+
+            )}
+
+          </div>
+
+        </div>
+
+      ))}
+
+    </div>
+
+  )}
+
+  {/* SQUARE STYLE */}
+
+  {menuStyle==="square"&&(
+
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+
+      {displayedItems
+      .filter((item:any)=>item.image)
+      .map((item:any,i:number)=>(
+
+      <div key={i}>
+
+        <div className="aspect-[4/3] rounded-2xl overflow-hidden">
+
+          <img
+            src={optimizeImage(item.image,500)}
+            loading="lazy"
+            alt={item.name}
+            className="w-full h-full object-cover"
+          />
+
+        </div>
+
+        <h3
+          className="font-bold mt-3"
+          style={{
+            color:theme.secondaryColor
+          }}
+        >
+          {item.name}
+        </h3>
+
+        <p
+          className="font-bold"
+          style={{
+            color:theme.primaryColor
+          }}
+        >
+          {item.price}
+        </p>
+
+      </div>
+
+      ))}
+
+    </div>
+
+  )}
+
+</div>
+  </div>
+
+</section>
+)}
 
       {/* 4. GALLERY & ATMOSPHERE */}
       <section className="max-w-6xl mx-auto px-4 md:px-6 pt-24">

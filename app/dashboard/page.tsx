@@ -245,12 +245,12 @@ if (data.companyId) {
 
     const existing = menu.find((c) => c.category === category);
 
-    const newItem = {
-      name: itemName,
-      description: itemDescription,
-      price,
-      image: imageUrl,
-    };
+  const newItem = {
+  name: itemName.trim(),
+  description: itemDescription.trim(),
+  price: price.trim(),
+  image: imageUrl || "",
+};
 
     if (existing) {
       existing.items.push(newItem);
@@ -1023,7 +1023,12 @@ const suggestOfferIcon = (text: string) => {
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className={labelClass}>Menu Item Image</label>
+                    <label className={labelClass}>
+                     Menu Item Image (Optional)
+                    </label>
+                    <p className="mb-2 text-sm text-gray-500">
+                     Add image if available. You can publish menu without image.
+                    </p>
                     <input
                       type="file"
                       accept="image/*"
@@ -1085,7 +1090,16 @@ const suggestOfferIcon = (text: string) => {
                       </h3>
 
                       <div className="space-y-3">
-                        {cat.items.map((item: any, j: number) => {
+                        {[...cat.items]
+.sort((a, b) => {
+  const aHasImage = Boolean(a.image);
+  const bHasImage = Boolean(b.image);
+
+  if (aHasImage === bHasImage) return 0;
+
+  return aHasImage ? -1 : 1;
+})
+.map((item: any, j: number) => {
                           const removeKey = `${i}-${j}`;
                           const isConfirming = confirmMenuRemove === removeKey;
 
