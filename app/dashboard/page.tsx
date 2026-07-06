@@ -4,8 +4,16 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../lib/firebase";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { FaWhatsapp } from "react-icons/fa";
+import {
+  onAuthStateChanged,
+  signOut,
+  User,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  sendEmailVerification,
+} from "firebase/auth";
+import { FaWhatsapp, FaInstagram, FaFacebook, FaTiktok } from "react-icons/fa";
 import {
   Phone,
   Wifi,
@@ -15,7 +23,30 @@ import {
   Coffee,
   Tag,
   Flame,
-  CheckCircle2 } from "lucide-react";
+  CheckCircle2,
+  Edit3,
+  Trash2,
+  Lock,
+  Plus,
+  Settings,
+  ShieldCheck,
+  AlertTriangle,
+  Loader2,
+  ChevronRight,
+  ExternalLink,
+  X,
+  Star,
+  Image as ImageIcon,
+  UploadCloud,
+  LogOut,
+  Mail,
+  Smartphone,
+  Search,
+  MapPin,
+  Clock,
+  CircleCheck,
+  Globe,
+} from "lucide-react";
 import {
   doc,
   setDoc,
@@ -27,6 +58,7 @@ import {
 } from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
 
+// --- CONSTANTS ---
 const BRAND = "#f08c6c";
 const QR_DARK = "#7a4636";
 
@@ -34,11 +66,105 @@ type TabKey =
   | "general"
   | "branding"
   | "menu"
-  | "social"
   | "gallery"
-  | "offers";
+  | "offers"
+  | "account";
 
- function TabButton({
+// --- TYPES ---
+interface MenuItem {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  image: string;
+  available: boolean;
+  featured: boolean;
+}
+
+interface MenuCategory {
+  category: string;
+  items: MenuItem[];
+}
+
+interface Offer {
+  text: string;
+  icon: string;
+}
+
+// --- REUSABLE UI COMPONENTS ---
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: "success" | "error";
+  onClose: () => void;
+}) => (
+  <div className="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 animate-in slide-in-from-bottom-10">
+    <div
+      className={`flex items-center gap-3 rounded-2xl px-6 py-4 shadow-2xl ${
+        type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+      }`}
+    >
+      {type === "success" ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+      <span className="font-semibold">{message}</span>
+      <button onClick={onClose} className="ml-4 opacity-70 hover:opacity-100">
+        <X size={18} />
+      </button>
+    </div>
+  </div>
+);
+
+const Modal = ({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) => (
+  <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-lg animate-in zoom-in-95 rounded-[2.5rem] bg-white p-8 shadow-2xl">
+      <div className="mb-6 flex items-center justify-between">
+        <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+        <button onClick={onClose} className="rounded-full p-2 hover:bg-gray-100">
+          <X size={24} />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const SectionCard = ({
+  title,
+  subtitle,
+  children,
+  icon: Icon,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  icon?: any;
+}) => (
+  <section className="overflow-hidden rounded-3xl border border-[#f4d4ca] bg-white shadow-sm">
+    <div className="flex items-center justify-between border-b border-[#f4d4ca] bg-[#fffdfa] px-6 py-4">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+          {Icon && <Icon size={20} className="text-[#f08c6c]" />}
+          {title}
+        </h2>
+        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+      </div>
+    </div>
+    <div className="p-6">{children}</div>
+  </section>
+);
+
+function TabButton({
   id,
   label,
   emoji,
@@ -52,132 +178,143 @@ type TabKey =
   setActiveTab: (tab: TabKey) => void;
 }) {
   const isActive = activeTab === id;
-
   return (
     <button
       onClick={() => setActiveTab(id)}
-      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+      className={`flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-bold transition-all ${
         isActive
-          ? "bg-[#f08c6c] text-white shadow-md"
-          : "text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm"
+          ? "bg-[#f08c6c] text-white shadow-lg shadow-[#f08c6c]/20"
+          : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
       }`}
     >
-      <span className="text-base">{emoji}</span>
+      <span>{emoji}</span>
       <span>{label}</span>
-      {isActive && <span className="ml-auto h-2 w-2 rounded-full bg-white" />}
+      {isActive && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-white" />}
     </button>
   );
 }
 
-  const SectionCard = ({
-    title,
-    subtitle,
-    children,
-  }: {
-    title: string;
-    subtitle?: string;
-    children: React.ReactNode;
-  }) => (
-    <section className="overflow-hidden rounded-3xl border border-[#f4d4ca] bg-white shadow-sm">
-      <div className="border-b border-[#f4d4ca] bg-[#fffdfa] px-6 py-4">
-        <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
-      </div>
-      <div className="p-6">{children}</div>
-    </section>
-  );
-
+// --- MAIN DASHBOARD PAGE ---
 
 export default function DashboardPage() {
   const router = useRouter();
 
-  const [company, setCompany] = useState<any | null>(null);
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  // AUTH & LOADING STATE
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("general");
 
+  // RESTAURANT CORE DATA
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [about, setAbout] = useState("");
-
   const [logo, setLogo] = useState("");
   const [coverImage, setCoverImage] = useState("");
-
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [website, setWebsite] = useState("");
   const [location, setLocation] = useState("");
 
+  // SOCIALS (INTEGRATED INTO GENERAL)
   const [instagram, setInstagram] = useState("");
   const [facebook, setFacebook] = useState("");
   const [tiktok, setTiktok] = useState("");
 
+  // THEME
   const [primaryColor, setPrimaryColor] = useState(BRAND);
   const [secondaryColor, setSecondaryColor] = useState("#111827");
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
 
-  const [category, setCategory] = useState("");
-  const [itemName, setItemName] = useState("");
-  const [itemDescription, setItemDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [menu, setMenu] = useState<any[]>([]);
+  // MENU SYSTEM STATE
+  const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+  
+  // Menu Form State
+  const [mName, setMName] = useState("");
+  const [mPrice, setMPrice] = useState("");
+  const [mDesc, setMDesc] = useState("");
+  const [mCat, setMCat] = useState("");
+  const [mImg, setMImg] = useState("");
+  const [mAvailable, setMAvailable] = useState(true);
+  const [mFeatured, setMFeatured] = useState(false);
 
+  // CATEGORY MANAGER
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [catToRename, setCatToRename] = useState<string | null>(null);
+  const [newCatName, setNewCatName] = useState("");
+
+  // GALLERY & OFFERS
   const [gallery, setGallery] = useState<string[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [offerInput, setOfferInput] = useState("");
-  const [offerIcon, setOfferIcon] = useState("tag");
-  const [offers, setOffers] = useState<{ text: string; icon: string }[]>([]);
 
-  const [saving, setSaving] = useState(false);
+  // SECURITY & SUBSCRIPTION
+  const [curPass, setCurPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confPass, setConfPass] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [company, setCompany] = useState<any>(null);
+  
+  // PREMIUM FIELDS
+  const [plan, setPlan] = useState("Basic");
 
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const [uploadingMenuImage, setUploadingMenuImage] = useState(false);
-  const [uploadingGallery, setUploadingGallery] = useState(false);
+  // UPLOAD STATES
+  const [uploading, setUploading] = useState<string | null>(null);
 
-  const [confirmMenuRemove, setConfirmMenuRemove] = useState<string | null>(null);
-  const [confirmGalleryRemove, setConfirmGalleryRemove] = useState<number | null>(null);
-  const [confirmOfferRemove, setConfirmOfferRemove] = useState<number | null>(null);
+  // --- HELPERS ---
+
+  const triggerToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const uploadImageToCloudinary = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+    return data.url as string;
+  };
+
+  // --- INITIALIZATION ---
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) {
-        router.push("/login");
-      } else {
-        setUser(currentUser);
-      }
+      if (!currentUser) router.push("/login");
+      else setUser(currentUser);
       setCheckingAuth(false);
     });
-
     return () => unsubscribe();
   }, [router]);
 
   useEffect(() => {
-    const loadRestaurant = async () => {
+    const loadData = async () => {
       if (!user) return;
-
       try {
         const docRef = doc(db, "restaurants", user.uid);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
           const data = docSnap.data();
-
           setName(data.name || "");
           setSlug(data.slug || "");
           setDescription(data.description || "");
           setAbout(data.about || "");
-
           setLogo(data.logo || "");
           setCoverImage(data.coverImage || "");
-
           setPhone(data.phone || "");
           setWhatsapp(data.whatsapp || "");
           setWebsite(data.website || "");
           setLocation(data.location || "");
-
+          
+          // Socials mapping
           setInstagram(data.social?.instagram || "");
           setFacebook(data.social?.facebook || "");
           setTiktok(data.social?.tiktok || "");
@@ -185,398 +322,292 @@ export default function DashboardPage() {
           setPrimaryColor(data.theme?.primaryColor || BRAND);
           setSecondaryColor(data.theme?.secondaryColor || "#111827");
           setBackgroundColor(data.theme?.backgroundColor || "#ffffff");
-
           setMenu(data.menu || []);
           setGallery(data.gallery || []);
           setOffers(data.offers || []);
+          setPlan(data.plan || "Basic");
 
-// 🔥 FIXED COMPANY FETCH (inside async)
-if (data.companyId) {
-  const companyRef = doc(db, "companies", data.companyId);
-  const companySnap = await getDoc(companyRef);
-
-  if (companySnap.exists()) {
-    const companyData = companySnap.data();
-    setCompany(companyData);
-
-    if (companyData.subscriptionEnd) {
-      const today = new Date();
-      const end = new Date(companyData.subscriptionEnd);
-
-      const diff = end.getTime() - today.getTime();
-      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-
-      setDaysRemaining(days);
-    }
-  }
-}
+          if (data.companyId) {
+            const companySnap = await getDoc(doc(db, "companies", data.companyId));
+            if (companySnap.exists()) {
+              const cData = companySnap.data();
+              setCompany(cData);
+              if (cData.subscriptionEnd) {
+                const diff = new Date(cData.subscriptionEnd).getTime() - Date.now();
+                setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+              }
+            }
+          }
         }
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        console.error("Load error:", err);
       }
     };
-
-    loadRestaurant();
+    loadData();
   }, [user]);
 
-  
+  // --- MENU LOGIC ---
 
-  const uploadImageToCloudinary = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
+  const existingCategories = useMemo(() => {
+    return Array.from(new Set(menu.map((m) => m.category))).sort();
+  }, [menu]);
 
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+  const filteredMenu = useMemo(() => {
+    if (!searchQuery) return menu;
+    const query = searchQuery.toLowerCase();
+    return menu
+      .map((cat) => ({
+        ...cat,
+        items: cat.items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(query) ||
+            item.description.toLowerCase().includes(query)
+        ),
+      }))
+      .filter((cat) => cat.items.length > 0);
+  }, [menu, searchQuery]);
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Upload failed");
-    }
-
-    return data.url as string;
+  const resetMenuForm = () => {
+    setEditingItemId(null);
+    setMName(""); setMPrice(""); setMDesc(""); setMCat(""); setMImg("");
+    setMAvailable(true); setMFeatured(false);
   };
 
-
-  const addMenuItem = () => {
-    if (!category || !itemName || !price) return;
-
-    const existing = menu.find((c) => c.category === category);
-
-  const newItem = {
-  name: itemName.trim(),
-  description: itemDescription.trim(),
-  price: price.trim(),
-  image: imageUrl || "",
-};
-
-    if (existing) {
-      existing.items.push(newItem);
-      setMenu([...menu]);
-    } else {
-      setMenu([
-        ...menu,
-        {
-          category,
-          items: [newItem],
-        },
-      ]);
-    }
-
-    setItemName("");
-    setItemDescription("");
-    setPrice("");
-    setImageUrl("");
+  const handleEditItem = (item: MenuItem, category: string) => {
+    setEditingItemId(item.id);
+    setMName(item.name);
+    setMPrice(item.price);
+    setMDesc(item.description);
+    setMCat(category);
+    setMImg(item.image);
+    setMAvailable(item.available);
+    setMFeatured(item.featured);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-const removeMenuItem = async (categoryIndex: number, itemIndex: number) => {
-  const updatedMenu = [...menu];
-
-  const imageUrl = updatedMenu[categoryIndex].items[itemIndex].image;
-
-  if (imageUrl) {
-    await fetch("/api/delete-image", {
-      method: "POST",
-      body: JSON.stringify({ url: imageUrl }),
-    });
-  }
-
-  updatedMenu[categoryIndex].items.splice(itemIndex, 1);
-
-  if (updatedMenu[categoryIndex].items.length === 0) {
-    updatedMenu.splice(categoryIndex, 1);
-  }
-
-  setMenu(updatedMenu);
-  setConfirmMenuRemove(null);
-};
-
-  const removeGalleryImage = async (index: number) => {
-  const url = gallery[index];
-
-  try {
-    await fetch("/api/delete-image", {
-      method: "POST",
-      body: JSON.stringify({ url }),
-    });
-  } catch (e) {
-    console.error("Cloudinary delete failed");
-  }
-
-  const updated = [...gallery];
-  updated.splice(index, 1);
-  setGallery(updated);
-  setConfirmGalleryRemove(null);
-};
-
-const suggestOfferIcon = (text: string) => {
-  const t = text.toLowerCase();
-
-  if (t.includes("wifi") || t.includes("password")) return "wifi";
-  if (t.includes("phone") || t.includes("call")) return "phone";
-  if (t.includes("delivery")) return "truck";
-  if (t.includes("parking")) return "car";
-  if (t.includes("music")) return "music";
-  if (t.includes("coffee")) return "coffee";
-  if (t.includes("discount") || t.includes("free")) return "tag";
-  if (t.includes("hot") || t.includes("special")) return "flame";
-
-  return "tag";
-};
-  const addOffer = () => {
-  const clean = offerInput.trim();
-  if (!clean) return;
-
-  setOffers([
-    ...offers,
-    {
-      text: clean,
-      icon: offerIcon || suggestOfferIcon(clean),
-    },
-  ]);
-
-  setOfferInput("");
-  setOfferIcon("tag");
-};
-  const removeOffer = (index: number) => {
-    const updated = [...offers];
-    updated.splice(index, 1);
-    setOffers(updated);
-    setConfirmOfferRemove(null);
-  };
-
-  const slugExistsForAnotherUser = async () => {
-    const q = query(collection(db, "restaurants"), where("slug", "==", slug));
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) return false;
-    return snapshot.docs.some((d) => d.id !== user?.uid);
-  };
-
-  const handleSave = async () => {
-    if (!user) return alert("You must be logged in");
-    if (!slug) return alert("Enter restaurant slug");
-    if (!name) return alert("Enter restaurant name");
-
-    if (uploadingLogo || uploadingCover || uploadingMenuImage || uploadingGallery) {
-      alert("Please wait until all uploads finish.");
+  const saveMenuItem = () => {
+    if (!mName.trim() || !mPrice.trim() || !mCat.trim()) {
+      triggerToast("Name, Price and Category are required", "error");
       return;
     }
 
+    const item: MenuItem = {
+      id: editingItemId || crypto.randomUUID(),
+      name: mName.trim(),
+      price: mPrice.trim(),
+      description: mDesc.trim(),
+      image: mImg,
+      available: mAvailable,
+      featured: mFeatured,
+    };
+
+    let updatedMenu = menu.map((cat) => ({
+      ...cat,
+      items: cat.items.filter((i) => i.id !== item.id),
+    })).filter(cat => cat.items.length > 0);
+
+    const catIdx = updatedMenu.findIndex((c) => c.category === mCat.trim());
+    if (catIdx > -1) {
+      updatedMenu[catIdx].items.push(item);
+    } else {
+      updatedMenu.push({ category: mCat.trim(), items: [item] });
+    }
+
+    setMenu(updatedMenu);
+    resetMenuForm();
+    triggerToast(editingItemId ? "Product updated" : "Product added");
+  };
+
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
+    const updated = menu
+      .map((cat) => ({
+        ...cat,
+        items: cat.items.filter((i) => i.id !== itemToDelete.id),
+      }))
+      .filter((cat) => cat.items.length > 0);
+    setMenu(updated);
+    setItemToDelete(null);
+    triggerToast("Product removed");
+  };
+
+  const handleRenameCategory = () => {
+    if (!catToRename || !newCatName.trim()) return;
+    const updated = menu.map((c) =>
+      c.category === catToRename ? { ...c, category: newCatName.trim() } : c
+    );
+    setMenu(updated);
+    setCatToRename(null);
+    triggerToast("Category renamed");
+  };
+
+  const handleDeleteCategory = (catName: string) => {
+    if (confirm(`Delete category "${catName}" and all its items?`)) {
+      setMenu(menu.filter((c) => c.category !== catName));
+      triggerToast("Category deleted");
+    }
+  };
+
+  // --- GALLERY & OFFERS LOGIC ---
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading("gallery");
     try {
-      setSaving(true);
+      const urls = await Promise.all(
+        Array.from(files).map((file) => uploadImageToCloudinary(file))
+      );
+      setGallery((prev) => [...prev, ...urls]);
+      triggerToast(`${urls.length} images added to gallery`);
+    } catch (err) {
+      triggerToast("Upload failed", "error");
+    } finally {
+      setUploading(null);
+    }
+  };
 
-      const exists = await slugExistsForAnotherUser();
-      if (exists) {
-        alert("This slug is already being used. Choose another one.");
-        setSaving(false);
-        return;
-      }
+  const suggestIcon = (t: string) => {
+    const s = t.toLowerCase();
+    if (s.includes("wifi")) return "wifi";
+    if (s.includes("parking")) return "car";
+    if (s.includes("delivery")) return "truck";
+    if (s.includes("music")) return "music";
+    if (s.includes("coffee")) return "coffee";
+    return "tag";
+  };
 
-      await setDoc(
-  doc(db, "restaurants", user.uid),
-  {
-        ownerUid: user.uid,
-        ownerEmail: user.email,
-        name,
-        slug,
-        description,
-        about,
-        logo,
-        coverImage,
-        phone,
-        whatsapp,
-        website,
-        location,
-        social: {
-          instagram,
-          facebook,
-          tiktok,
-        },
-        theme: {
-          primaryColor,
-          secondaryColor,
-          backgroundColor,
-        },
-        menu,
-        gallery,
-        offers,
-           updatedAt: new Date().toISOString(),
-  },
-  { merge: true }
-);
+  const addOffer = () => {
+    if (!offerInput.trim()) return;
+    setOffers([...offers, { text: offerInput.trim(), icon: suggestIcon(offerInput) }]);
+    setOfferInput("");
+  };
 
-      alert("Saved successfully!");
-    } catch (error) {
-      console.error(error);
-      alert("Save failed");
+  // --- SECURITY & ACCOUNT ---
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass !== confPass) return triggerToast("Passwords do not match", "error");
+    if (newPass.length < 6) return triggerToast("Password too short", "error");
+    
+    setSaving(true);
+    try {
+      const credential = EmailAuthProvider.credential(user!.email!, curPass);
+      await reauthenticateWithCredential(user!, credential);
+      await updatePassword(user!, newPass);
+      triggerToast("Password updated successfully");
+      setCurPass(""); setNewPass(""); setConfPass("");
+    } catch (err: any) {
+      triggerToast(err.message, "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.push("/login");
+  const verifyEmail = async () => {
+    if (!user || verifying) return;
+    setVerifying(true);
+    try {
+      await sendEmailVerification(user);
+      triggerToast("Verification link sent to your email");
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    } finally {
+      setTimeout(() => setVerifying(false), 5000);
+    }
   };
 
-  const drawRoundedRect = (
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    radius: number
-  ) => {
+  // --- SAVE & PUBLISH ---
+
+  const handleSave = async () => {
+    if (!user || !slug || !name) return triggerToast("Missing required info", "error");
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "restaurants", user.uid), {
+        ownerUid: user.uid,
+        ownerEmail: user.email,
+        name, slug, description, about, logo, coverImage, phone, whatsapp, website, location,
+        social: { instagram, facebook, tiktok },
+        theme: { primaryColor, secondaryColor, backgroundColor },
+        menu, gallery, offers, plan,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      triggerToast("Changes published live!");
+    } catch (err) {
+      triggerToast("Save failed", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // --- QR DOWNLOADS (PRESERVED FROM ORIGINAL LOGIC) ---
+  const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
     ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
   };
 
-  const downloadQRCodeSVG = () => {
+  const downloadQR = async (format: 'svg' | 'png') => {
     const svg = document.getElementById("restaurant-qr");
     if (!svg) return;
-
     const serializer = new XMLSerializer();
     const svgString = serializer.serializeToString(svg);
 
-    const blob = new Blob([svgString], {
-      type: "image/svg+xml;charset=utf-8",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${slug || "restaurant"}-qrcode.svg`;
-    link.click();
-    URL.revokeObjectURL(url);
+    if (format === 'svg') {
+      const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slug}-qrcode.svg`;
+      link.click();
+    } else {
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const qrImg = new window.Image();
+      qrImg.crossOrigin = "anonymous";
+      qrImg.onload = () => {
+        const canvas = document.createElement("canvas");
+        const w = 900, h = 1120;
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#fff8f5"; ctx.fillRect(0, 0, w, h);
+        drawRoundedRect(ctx, 70, 70, 760, 980, 36);
+        ctx.fillStyle = "#ffffff"; ctx.fill();
+        ctx.lineWidth = 4; ctx.strokeStyle = "#f4d4ca"; ctx.stroke();
+        drawRoundedRect(ctx, 120, 120, 660, 110, 28);
+        ctx.fillStyle = BRAND; ctx.fill();
+        ctx.fillStyle = "#ffffff"; ctx.font = "bold 34px Arial"; ctx.textAlign = "center";
+        ctx.fillText("ScanDish", w / 2, 170);
+        ctx.font = "20px Arial"; ctx.fillText("Smart QR Restaurant Experience", w / 2, 205);
+        drawRoundedRect(ctx, 175, 270, 550, 550, 40);
+        ctx.fillStyle = "#ffffff"; ctx.fill();
+        ctx.drawImage(qrImg, 210, 305, 480, 480);
+        ctx.fillStyle = "#111827"; ctx.font = "bold 36px Arial";
+        ctx.fillText(name || "Restaurant", w / 2, 900);
+        ctx.fillStyle = "#6b7280"; ctx.font = "22px Arial";
+        ctx.fillText(`/r/${slug}`, w / 2, 940);
+        ctx.fillStyle = BRAND; ctx.font = "bold 24px Arial";
+        ctx.fillText("Scan to view menu", w / 2, 995);
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `${slug}-qrcode.png`;
+        link.click();
+      };
+      qrImg.src = svgUrl;
+    }
   };
 
-  const downloadQRCodePNG = async () => {
-    const svg = document.getElementById("restaurant-qr");
-    if (!svg) return;
-
-    const serializer = new XMLSerializer();
-    const svgString = serializer.serializeToString(svg);
-    const svgBlob = new Blob([svgString], {
-      type: "image/svg+xml;charset=utf-8",
-    });
-    const svgUrl = URL.createObjectURL(svgBlob);
-
-    const qrImg = new window.Image();
-    qrImg.crossOrigin = "anonymous";
-
-    qrImg.onload = () => {
-      const canvas = document.createElement("canvas");
-      const width = 900;
-      const height = 1120;
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.fillStyle = "#fff8f5";
-      ctx.fillRect(0, 0, width, height);
-
-      drawRoundedRect(ctx, 70, 70, 760, 980, 36);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = "#f4d4ca";
-      ctx.stroke();
-
-      drawRoundedRect(ctx, 120, 120, 660, 110, 28);
-      ctx.fillStyle = BRAND;
-      ctx.fill();
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 34px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("ScanDish", width / 2, 170);
-
-      ctx.font = "20px Arial";
-      ctx.fillText("Smart QR Restaurant Experience", width / 2, 205);
-
-      drawRoundedRect(ctx, 175, 270, 550, 550, 40);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#ecd4cb";
-      ctx.stroke();
-
-      ctx.drawImage(qrImg, 210, 305, 480, 480);
-
-      drawRoundedRect(ctx, 385, 480, 130, 130, 24);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#f2ddd6";
-      ctx.stroke();
-
-      const logoImg = new window.Image();
-      logoImg.crossOrigin = "anonymous";
-
-      logoImg.onload = () => {
-        ctx.save();
-        drawRoundedRect(ctx, 400, 495, 100, 100, 20);
-        ctx.clip();
-        ctx.drawImage(logoImg, 400, 495, 100, 100);
-        ctx.restore();
-
-        ctx.fillStyle = "#111827";
-        ctx.font = "bold 36px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(name || "Restaurant", width / 2, 900);
-
-        ctx.fillStyle = "#6b7280";
-        ctx.font = "22px Arial";
-        ctx.fillText(`/r/${slug || "restaurant"}`, width / 2, 940);
-
-        ctx.fillStyle = BRAND;
-        ctx.font = "bold 24px Arial";
-        ctx.fillText("Scan to view menu and restaurant page", width / 2, 995);
-
-        const pngUrl = canvas.toDataURL("image/png");
-        const link = document.createElement("a");
-        link.href = pngUrl;
-        link.download = `${slug || "restaurant"}-qrcode.png`;
-        link.click();
-
-        URL.revokeObjectURL(svgUrl);
-      };
-
-      logoImg.onerror = () => {
-        const pngUrl = canvas.toDataURL("image/png");
-        const link = document.createElement("a");
-        link.href = pngUrl;
-        link.download = `${slug || "restaurant"}-qrcode.png`;
-        link.click();
-
-        URL.revokeObjectURL(svgUrl);
-      };
-
-      logoImg.src = "/images/logo.jpg";
-    };
-
-    qrImg.src = svgUrl;
-  };
-
-  const publicUrl =
-    slug && typeof window !== "undefined"
-      ? `${window.location.origin}/r/${slug}`
-      : "";
-
+  const publicUrl = slug ? `${window.location.origin}/r/${slug}` : "";
   const completion = useMemo(() => {
     let score = 0;
     if (name) score += 1;
@@ -584,940 +615,701 @@ const suggestOfferIcon = (text: string) => {
     if (description) score += 1;
     if (logo) score += 1;
     if (coverImage) score += 1;
-    if (phone || whatsapp || website || location) score += 1;
+    if (phone || whatsapp) score += 1;
     if (menu.length > 0) score += 1;
     if (gallery.length > 0) score += 1;
     if (offers.length > 0) score += 1;
     return Math.round((score / 9) * 100);
-  }, [name, slug, description, logo, coverImage, phone, whatsapp, website, location, menu, gallery, offers]);
+  }, [name, slug, description, logo, coverImage, phone, whatsapp, menu, gallery, offers]);
 
-  const tabs: { id: TabKey; label: string; emoji: string }[] = [
-    { id: "general", label: "General", emoji: "🏢" },
-    { id: "branding", label: "Branding", emoji: "🎨" },
-    { id: "menu", label: "Menu", emoji: "🍽️" },
-    { id: "social", label: "Social", emoji: "🔗" },
-    { id: "gallery", label: "Gallery", emoji: "🖼️" },
-    { id: "offers", label: "Offers", emoji: "✨" },
-  ];
-
-  const inputClass =
-    "w-full rounded-2xl border border-[#efd6ce] bg-white px-4 py-3 outline-none transition focus:border-[#f08c6c] focus:ring-2 focus:ring-[#f08c6c]/20";
-  const labelClass =
-    "mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-gray-500";
-
- 
   if (checkingAuth) {
     return (
-      <main className="min-h-screen bg-[#fff8f5] p-6">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-gray-600">Checking login...</p>
-        </div>
-      </main>
+      <div className="flex h-screen items-center justify-center bg-[#fff8f5]">
+        <Loader2 className="animate-spin text-[#f08c6c]" size={40} />
+      </div>
     );
   }
 
-  if (!user) return null;
-
   return (
-    <main className="min-h-screen bg-[#fff8f5] text-gray-900">
-      <header className="sticky top-0 z-40 border-b border-[#f4d4ca] bg-white/90 backdrop-blur">
+    <main className="min-h-screen bg-[#fff8f5] pb-20 text-gray-900">
+      {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+
+      <header className="sticky top-0 z-40 border-b border-[#f4d4ca] bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
           <div className="flex items-center gap-4">
             <div className="relative h-12 w-12 overflow-hidden rounded-2xl border border-[#f3d8cf] bg-white shadow-sm">
-              <Image
-                src="/images/logo.jpg"
-                alt="ScanDish logo"
-                fill
-                className="object-cover"
-                sizes="48px"
-                priority
-              />
+              <Image src="/images/logo.jpg" alt="ScanDish" fill className="object-cover" />
             </div>
-
             <div>
-              <p className="text-sm font-semibold" style={{ color: BRAND }}>
-                ScanDish
-              </p>
-              <h1 className="text-xl font-bold md:text-2xl">Admin Dashboard</h1>
-              <p className="text-xs text-gray-500 md:text-sm">
-                Logged in as: {user.email}
-              </p>
+              <p className="text-xs font-black uppercase tracking-widest text-[#f08c6c]">ScanDish</p>
+              <h1 className="text-xl font-black tracking-tight md:text-2xl">Dashboard</h1>
             </div>
           </div>
-
           <button
-            onClick={handleLogout}
-            className="rounded-2xl bg-red-600 px-4 py-2 font-medium text-white shadow-sm"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-2xl bg-[#f08c6c] px-6 py-2.5 font-bold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50"
           >
-            Logout
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+            Publish Changes
           </button>
         </div>
       </header>
 
-     {/* 🔥 SUBSCRIPTION WARNING */}
-{daysRemaining !== null && (
-  <div className="mx-auto max-w-7xl px-4 pt-6 md:px-6">
-    {/* 5 DAYS WARNING */}
-    {daysRemaining > 0 && daysRemaining <= 5 && (
-      <div className="mb-4 rounded-3xl border border-orange-200 bg-orange-50 px-5 py-4 text-orange-800">
-        <p className="font-bold">⚠️ Subscription ending soon</p>
-        <p className="text-sm mt-1">
-          Your ScanDish subscription ends in{" "}
-          <span className="font-semibold">
-            {daysRemaining} day{daysRemaining > 1 ? "s" : ""}
-          </span>.
-          Contact ScanDish (+250781822350) to renew your plan.
-        </p>
-      </div>
-    )}
-
-    {/* GRACE PERIOD */}
-    {daysRemaining <= 0 && daysRemaining >= -10 && (
-      <div className="mb-4 rounded-3xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
-        <p className="font-bold">⏳ Grace period active</p>
-        <p className="text-sm mt-1">
-          Your subscription has expired, but your page is still active during
-          the 10-day bonus period.
-        </p>
-      </div>
-    )}
-
-    {/* FULLY EXPIRED */}
-    {daysRemaining < -10 && (
-      <div className="mb-4 rounded-3xl border border-red-300 bg-red-100 px-5 py-4 text-red-900">
-        <p className="font-bold">❌ Subscription expired</p>
-        <p className="text-sm mt-1">
-          Your restaurant page is no longer visible to customers. Contact
-          ScanDish to renew.
-        </p>
-      </div>
-    )}
-  </div>
-)}
-     
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[240px_1fr_340px] md:px-6">
-        <aside className="space-y-3">
-          <div className="rounded-3xl border border-[#f4d4ca] bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-              Setup Progress
-            </p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{completion}%</p>
-            <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#f7e6df]">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{ width: `${completion}%`, backgroundColor: BRAND }}
-              />
+      {/* SUBSCRIPTION WARNINGS */}
+      {daysRemaining !== null && (
+        <div className="mx-auto mt-6 max-w-7xl px-4 md:px-6">
+          {daysRemaining <= 5 && daysRemaining > 0 && (
+            <div className="flex items-center gap-4 rounded-3xl border border-orange-200 bg-orange-50 p-5 text-orange-800">
+              <AlertTriangle className="shrink-0" />
+              <div>
+                <p className="font-bold">Subscription ending soon</p>
+                <p className="text-sm">Renews in {daysRemaining} days. Contact support to renew your plan.</p>
+              </div>
             </div>
-            <p className="mt-3 text-sm text-gray-500">
-              Complete your profile, menu, gallery, and offers before publishing.
-            </p>
+          )}
+          {daysRemaining <= 0 && (
+            <div className="flex items-center gap-4 rounded-3xl border border-red-200 bg-red-50 p-5 text-red-800">
+              <AlertTriangle className="shrink-0" />
+              <div>
+                <p className="font-bold">Subscription expired</p>
+                <p className="text-sm">Your restaurant page is hidden. Renew to make it public again.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[260px_1fr_340px]">
+        {/* SIDEBAR NAVIGATION */}
+        <aside className="space-y-4">
+          <div className="rounded-[2.5rem] border border-[#f4d4ca] bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+               <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Setup Progress</span>
+               <span className="text-xs font-bold text-[#f08c6c]">{completion}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+               <div className="h-full bg-[#f08c6c] transition-all duration-500" style={{ width: `${completion}%` }} />
+            </div>
           </div>
 
-          <nav className="space-y-2 rounded-3xl border border-[#f4d4ca] bg-[#fffaf8] p-3">
-           {tabs.map((tab) => (
-  <TabButton
-    key={tab.id}
-    id={tab.id}
-    label={tab.label}
-    emoji={tab.emoji}
-    activeTab={activeTab}
-    setActiveTab={setActiveTab}
-  />
-))}
+          <nav className="flex flex-col gap-1 rounded-[2.5rem] border border-[#f4d4ca] bg-white p-3 shadow-sm">
+            <TabButton id="general" label="General" emoji="🏢" activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabButton id="branding" label="Branding" emoji="🎨" activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabButton id="menu" label="Menu" emoji="🍽️" activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabButton id="gallery" label="Gallery" emoji="🖼️" activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabButton id="offers" label="Offers" emoji="✨" activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabButton id="account" label="Security" emoji="🔐" activeTab={activeTab} setActiveTab={setActiveTab} />
           </nav>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full rounded-2xl px-5 py-3 font-semibold text-white shadow-md disabled:opacity-50"
-            style={{ backgroundColor: BRAND }}
-          >
-            {saving ? "Publishing..." : "Publish Changes"}
+          
+          <button onClick={() => signOut(auth)} className="flex w-full items-center justify-center gap-2 rounded-3xl border border-red-50 py-4 font-bold text-red-500 transition-all hover:bg-red-50">
+            <LogOut size={18} /> Logout
           </button>
         </aside>
 
-        <section className="space-y-6">
+        {/* MAIN CONTENT AREA */}
+        <div className="space-y-6">
           {activeTab === "general" && (
-            <>
-              <SectionCard
-                title="Business Details"
-                subtitle="Main information customers will see on your public page."
-              >
+            <div className="space-y-6">
+              <SectionCard title="Identity" icon={Settings}>
                 <div className="space-y-4">
+                  <FormInput label="Business Name" value={name} onChange={setName} />
                   <div>
-                    <label className={labelClass}>Company Name</label>
-                    <input
-                      placeholder="Company Name"
-                      className={inputClass}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>Slug</label>
-                    <div className="flex gap-3">
-                      <input
-                        placeholder="your-slug"
-                        className={`${inputClass} font-mono`}
-                        value={slug}
-                        onChange={(e) =>
-                          setSlug(e.target.value.toLowerCase().replace(/\s+/g, "-"))
-                        }
-                      />
-                      <a
-                        href={publicUrl || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center rounded-2xl border border-[#efd6ce] bg-white px-4 text-sm font-semibold text-[#f08c6c]"
-                      >
-                        Open
-                      </a>
+                    <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">URL Slug (Protected)</label>
+                    <div className="flex items-center gap-2 rounded-2xl border bg-gray-50 px-5 py-4 font-mono text-sm text-gray-400">
+                      <Lock size={14} /> {slug || "not-set"}
                     </div>
                   </div>
-
-                  <div>
-                    <label className={labelClass}>Short Description</label>
-                    <input
-                      placeholder="Short Description (slogan)"
-                      className={inputClass}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>About Company</label>
+                  <FormInput label="Slogan / Short Description" value={description} onChange={setDescription} />
+                  <div className="space-y-2">
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-400">About the Place</label>
                     <textarea
-                      placeholder="About Company"
-                      className={`${inputClass} min-h-[140px]`}
                       value={about}
                       onChange={(e) => setAbout(e.target.value)}
+                      className="h-32 w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 outline-none focus:border-[#f08c6c]"
                     />
                   </div>
                 </div>
               </SectionCard>
 
-              <SectionCard
-                title="Contact Information"
-                subtitle="Help customers contact or locate your restaurant quickly."
-              >
+              <SectionCard title="Contact Information" icon={MapPin}>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>Phone Number</label>
+                  <FormInput label="Phone Number" value={phone} onChange={setPhone} />
+                  <FormInput label="WhatsApp Number" value={whatsapp} onChange={setWhatsapp} />
+                  <FormInput label="Website Link" value={website} onChange={setWebsite} />
+                  <FormInput label="Physical Address" value={location} onChange={setLocation} />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Social Links" icon={Globe}>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-gray-400">
+                      <FaInstagram size={14} /> Instagram URL
+                    </label>
                     <input
-                      placeholder="Phone Number"
-                      className={inputClass}
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      value={instagram}
+                      onChange={(e) => setInstagram(e.target.value)}
+                      placeholder="https://instagram.com/..."
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 font-medium outline-none transition-all focus:border-[#f08c6c]"
                     />
                   </div>
-
-                  <div>
-                    <label className={labelClass}>WhatsApp Number</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-gray-400">
+                      <FaFacebook size={14} /> Facebook URL
+                    </label>
                     <input
-                      placeholder="WhatsApp Number"
-                      className={inputClass}
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
+                      value={facebook}
+                      onChange={(e) => setFacebook(e.target.value)}
+                      placeholder="https://facebook.com/..."
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 font-medium outline-none transition-all focus:border-[#f08c6c]"
                     />
                   </div>
-
-                  <div>
-                    <label className={labelClass}>Website URL</label>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-gray-400">
+                      <FaTiktok size={14} /> TikTok URL
+                    </label>
                     <input
-                      placeholder="Website URL"
-                      className={inputClass}
-                      value={website}
-                      onChange={(e) => setWebsite(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>Location</label>
-                    <input
-                      placeholder="Location"
-                      className={inputClass}
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
+                      value={tiktok}
+                      onChange={(e) => setTiktok(e.target.value)}
+                      placeholder="https://tiktok.com/@..."
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 font-medium outline-none transition-all focus:border-[#f08c6c]"
                     />
                   </div>
                 </div>
               </SectionCard>
-            </>
+            </div>
           )}
 
           {activeTab === "branding" && (
-            <>
-              <SectionCard
-                title="Brand Assets"
-                subtitle="Upload your logo and cover image for a stronger public page."
-              >
+            <div className="space-y-6">
+              <SectionCard title="Visual Brand" icon={ImageIcon}>
                 <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-3">
-                    <label className={labelClass}>Your Logo</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className={inputClass}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        try {
-                          setUploadingLogo(true);
-                          const uploadedUrl = await uploadImageToCloudinary(file);
-                          setLogo(uploadedUrl);
-                        } catch (error) {
-                          console.error(error);
-                          alert("Logo upload failed");
-                        } finally {
-                          setUploadingLogo(false);
-                        }
-                      }}
-                    />
-                    {uploadingLogo && (
-                      <p className="text-sm text-gray-500">Uploading logo...</p>
-                    )}
-                    <div className="flex justify-center rounded-3xl border border-dashed border-[#efd6ce] bg-[#fffdfa] p-6">
-                      {logo ? (
-                        <img
-                          src={logo}
-                          alt="Logo preview"
-                          className="h-28 w-28 rounded-3xl object-cover border"
-                        />
-                      ) : (
-                        <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-[#fff4ef] text-4xl">
-                          🖼️
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className={labelClass}>Cover Image</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className={inputClass}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        try {
-                          setUploadingCover(true);
-                          const uploadedUrl = await uploadImageToCloudinary(file);
-                          setCoverImage(uploadedUrl);
-                        } catch (error) {
-                          console.error(error);
-                          alert("Cover upload failed");
-                        } finally {
-                          setUploadingCover(false);
-                        }
-                      }}
-                    />
-                    {uploadingCover && (
-                      <p className="text-sm text-gray-500">Uploading cover...</p>
-                    )}
-                    <div className="overflow-hidden rounded-3xl border border-dashed border-[#efd6ce] bg-[#fffdfa]">
-                      {coverImage ? (
-                        <img
-                          src={coverImage}
-                          alt="Cover preview"
-                          className="h-52 w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-52 items-center justify-center text-5xl">
-                          🌄
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <UploadBox
+                    label="Business Logo"
+                    image={logo}
+                    onUpload={async (file) => {
+                      setUploading("logo");
+                      const url = await uploadImageToCloudinary(file);
+                      setLogo(url);
+                      setUploading(null);
+                    }}
+                    uploading={uploading === "logo"}
+                  />
+                  <UploadBox
+                    label="Cover Photo"
+                    image={coverImage}
+                    isCover
+                    onUpload={async (file) => {
+                      setUploading("cover");
+                      const url = await uploadImageToCloudinary(file);
+                      setCoverImage(url);
+                      setUploading(null);
+                    }}
+                    uploading={uploading === "cover"}
+                  />
                 </div>
               </SectionCard>
-
-              <SectionCard
-                title="Theme Colors"
-                subtitle="Customize the look of your public page."
-              >
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-2xl border border-[#efd6ce] bg-[#fffdfa] p-4">
-                    <label className={labelClass}>Primary Color</label>
-                    <input
-                      type="color"
-                      className="h-14 w-full rounded-2xl border border-[#efd6ce]"
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-[#efd6ce] bg-[#fffdfa] p-4">
-                    <label className={labelClass}>Secondary Color</label>
-                    <input
-                      type="color"
-                      className="h-14 w-full rounded-2xl border border-[#efd6ce]"
-                      value={secondaryColor}
-                      onChange={(e) => setSecondaryColor(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-[#efd6ce] bg-[#fffdfa] p-4">
-                    <label className={labelClass}>Background Color</label>
-                    <input
-                      type="color"
-                      className="h-14 w-full rounded-2xl border border-[#efd6ce]"
-                      value={backgroundColor}
-                      onChange={(e) => setBackgroundColor(e.target.value)}
-                    />
-                  </div>
+              <SectionCard title="Custom Theme" icon={Settings}>
+                <div className="grid grid-cols-3 gap-4">
+                  <ColorInput label="Primary" value={primaryColor} onChange={setPrimaryColor} />
+                  <ColorInput label="Secondary" value={secondaryColor} onChange={setSecondaryColor} />
+                  <ColorInput label="Background" value={backgroundColor} onChange={setBackgroundColor} />
                 </div>
               </SectionCard>
-            </>
+            </div>
           )}
 
           {activeTab === "menu" && (
-            <>
-              <SectionCard
-                title="Add Menu Item"
-                subtitle="Build your menu category by category."
-              >
+            <div className="space-y-6">
+              <SectionCard title={editingItemId ? "Update Menu Item" : "New Menu Item"} icon={Plus}>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>Category</label>
-                    <input
-                      placeholder="Category (e.g. Drinks)"
-                      className={inputClass}
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>Item Name</label>
-                    <input
-                      placeholder="Item Name"
-                      className={inputClass}
-                      value={itemName}
-                      onChange={(e) => setItemName(e.target.value)}
-                    />
-                  </div>
-
                   <div className="md:col-span-2">
-                    <label className={labelClass}>Item Description</label>
+                    <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Category</label>
                     <input
-                      placeholder="Item Description"
-                      className={inputClass}
-                      value={itemDescription}
-                      onChange={(e) => setItemDescription(e.target.value)}
+                      list="cat-list"
+                      value={mCat}
+                      onChange={(e) => setMCat(e.target.value)}
+                      placeholder="Type or select a category..."
+                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 outline-none focus:border-[#f08c6c]"
                     />
+                    <datalist id="cat-list">
+                      {existingCategories.map((c) => (
+                        <option key={c} value={c} />
+                      ))}
+                    </datalist>
                   </div>
-
-                  <div>
-                    <label className={labelClass}>Price</label>
-                    <input
-                      placeholder="Price"
-                      className={inputClass}
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                    />
-                  </div>
-
+                  <FormInput label="Product Name" value={mName} onChange={setMName} />
+                  <FormInput label="Price (e.g. 15k RWF)" value={mPrice} onChange={setMPrice} />
                   <div className="md:col-span-2">
-                    <label className={labelClass}>
-                     Menu Item Image (Optional)
-                    </label>
-                    <p className="mb-2 text-sm text-gray-500">
-                     Add image if available. You can publish menu without image.
-                    </p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className={inputClass}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        try {
-                          setUploadingMenuImage(true);
-                          const uploadedUrl = await uploadImageToCloudinary(file);
-                          setImageUrl(uploadedUrl);
-                        } catch (error) {
-                          console.error(error);
-                          alert("Menu image upload failed");
-                        } finally {
-                          setUploadingMenuImage(false);
-                        }
-                      }}
-                    />
-                    {uploadingMenuImage && (
-                      <p className="mt-2 text-sm text-gray-500">Uploading menu image...</p>
-                    )}
-                    {imageUrl && (
-                      <img
-                        src={imageUrl}
-                        alt="Menu preview"
-                        className="mt-3 h-24 w-24 rounded-2xl border object-cover"
-                      />
-                    )}
+                    <FormInput label="Description (Optional)" value={mDesc} onChange={setMDesc} />
                   </div>
-                </div>
-
-                <button
-                  onClick={addMenuItem}
-                  className="mt-5 rounded-2xl px-5 py-3 font-semibold text-white shadow-md"
-                  style={{ backgroundColor: BRAND }}
-                >
-                  Add Menu Item
-                </button>
-              </SectionCard>
-
-              <SectionCard
-                title="Current Menu"
-                subtitle="Preview and manage items already added."
-              >
-                <div className="space-y-4">
-                  {menu.length === 0 && (
-                    <p className="text-sm text-gray-500">No menu items yet.</p>
-                  )}
-
-                  {menu.map((cat, i) => (
-                    <div
-                      key={i}
-                      className="rounded-3xl border border-[#f0dfd8] bg-[#fffdfa] p-4"
-                    >
-                      <h3 className="mb-3 text-lg font-bold" style={{ color: BRAND }}>
-                        {cat.category}
-                      </h3>
-
-                      <div className="space-y-3">
-                        {[...cat.items]
-.sort((a, b) => {
-  const aHasImage = Boolean(a.image);
-  const bHasImage = Boolean(b.image);
-
-  if (aHasImage === bHasImage) return 0;
-
-  return aHasImage ? -1 : 1;
-})
-.map((item: any, j: number) => {
-                          const removeKey = `${i}-${j}`;
-                          const isConfirming = confirmMenuRemove === removeKey;
-
-                          return (
-                            <div
-                              key={j}
-                              className="flex items-start gap-3 rounded-2xl border border-[#f2e4de] bg-white p-3"
-                            >
-                              {item.image && (
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="h-16 w-16 rounded-xl object-cover"
-                                />
-                              )}
-
-                              <div className="flex-1">
-                                <p className="font-semibold">{item.name}</p>
-                                {item.description && (
-                                  <p className="text-sm text-gray-500">{item.description}</p>
-                                )}
-                                <p className="mt-1 text-sm font-medium">{item.price}</p>
-                              </div>
-
-                              {!isConfirming ? (
-                                <button
-                                  onClick={() => setConfirmMenuRemove(removeKey)}
-                                  className="rounded-xl bg-red-500 px-3 py-2 text-sm text-white"
-                                >
-                                  Remove
-                                </button>
-                              ) : (
-                                <div className="flex flex-col gap-2">
-                                  <button
-                                    onClick={() => removeMenuItem(i, j)}
-                                    className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white"
-                                  >
-                                    Confirm
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmMenuRemove(null)}
-                                    className="rounded-xl border px-3 py-2 text-sm"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Item Photo</label>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border bg-gray-50">
+                        {mImg ? <img src={mImg} className="h-full w-full object-cover" /> : <ImageIcon className="text-gray-200" />}
+                      </div>
+                      <div className="relative flex-1">
+                        <div className="flex h-12 items-center justify-center rounded-2xl border-2 border-dashed border-[#f4d4ca] text-sm font-bold text-gray-400">
+                          {uploading === "menu" ? <Loader2 className="animate-spin" /> : <><UploadCloud size={16} className="mr-2" /> Upload Item Photo</>}
+                        </div>
+                        <input
+                          type="file"
+                          className="absolute inset-0 cursor-pointer opacity-0"
+                          onChange={async (e) => {
+                            if (!e.target.files?.[0]) return;
+                            setUploading("menu");
+                            const url = await uploadImageToCloudinary(e.target.files[0]);
+                            setMImg(url);
+                            setUploading(null);
+                          }}
+                        />
                       </div>
                     </div>
-                  ))}
-                </div>
-              </SectionCard>
-            </>
-          )}
-
-          {activeTab === "social" && (
-            <>
-              <SectionCard
-                title="Social & Online Presence"
-                subtitle="Add the links customers will use to connect with you."
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>Instagram URL</label>
-                    <input
-                      placeholder="Instagram URL"
-                      className={inputClass}
-                      value={instagram}
-                      onChange={(e) => setInstagram(e.target.value)}
-                    />
                   </div>
-
-                  <div>
-                    <label className={labelClass}>Facebook URL</label>
-                    <input
-                      placeholder="Facebook URL"
-                      className={inputClass}
-                      value={facebook}
-                      onChange={(e) => setFacebook(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>TikTok URL</label>
-                    <input
-                      placeholder="TikTok URL"
-                      className={inputClass}
-                      value={tiktok}
-                      onChange={(e) => setTiktok(e.target.value)}
-                    />
+                  <div className="flex gap-6 rounded-2xl bg-gray-50 p-4 md:col-span-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                      <input
+                        type="checkbox"
+                        checked={mAvailable}
+                        onChange={(e) => setMAvailable(e.target.checked)}
+                        className="h-5 w-5 accent-[#f08c6c]"
+                      />
+                      Available
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-orange-500">
+                      <input
+                        type="checkbox"
+                        checked={mFeatured}
+                        onChange={(e) => setMFeatured(e.target.checked)}
+                        className="h-5 w-5 accent-[#f08c6c]"
+                      />
+                      <Star size={14} fill="currentColor" /> Featured
+                    </label>
                   </div>
                 </div>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={saveMenuItem}
+                    className="flex-1 rounded-2xl bg-[#f08c6c] py-4 font-black text-white shadow-lg transition-all active:scale-95"
+                  >
+                    {editingItemId ? "Save Updates" : "Add to Menu"}
+                  </button>
+                  {editingItemId && (
+                    <button
+                      onClick={resetMenuForm}
+                      className="rounded-2xl border border-gray-200 px-6 font-bold text-gray-400"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </SectionCard>
-            </>
+
+              {/* MENU LIST */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      placeholder="Search menu items..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full rounded-2xl border border-[#f4d4ca] bg-white py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#f08c6c]/20"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowCatManager(true)}
+                    className="flex items-center gap-2 rounded-xl border border-[#f4d4ca] bg-white px-4 py-3 text-sm font-bold text-[#f08c6c]"
+                  >
+                    <Settings size={16} /> Manage Categories
+                  </button>
+                </div>
+
+                {filteredMenu.map((cat) => (
+                  <div key={cat.category} className="space-y-3">
+                    <h3 className="flex items-center gap-2 px-2 text-xs font-black uppercase tracking-widest text-[#f08c6c]">
+                      <ChevronRight size={14} /> {cat.category}
+                    </h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {cat.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`flex items-center gap-4 rounded-3xl border bg-white p-4 transition-all ${
+                            item.available ? "border-[#f4d4ca]" : "opacity-60 grayscale border-gray-200"
+                          }`}
+                        >
+                          <div className="h-14 w-14 overflow-hidden rounded-xl bg-gray-50">
+                            {item.image ? (
+                              <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-gray-200">
+                                <ImageIcon size={20} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate font-bold">{item.name}</p>
+                              {item.featured && <Star size={12} className="fill-orange-400 text-orange-400" />}
+                            </div>
+                            <p className="text-sm font-black text-[#f08c6c]">{item.price}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleEditItem(item, cat.category)}
+                              className="rounded-lg p-2 text-gray-400 hover:text-[#f08c6c]"
+                            >
+                              <Edit3 size={18} />
+                            </button>
+                            <button
+                              onClick={() => setItemToDelete({ id: item.id, name: item.name })}
+                              className="rounded-lg p-2 text-gray-400 hover:text-red-500"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {activeTab === "gallery" && (
-            <>
-              <SectionCard
-                title="Gallery"
-                subtitle="Upload and manage restaurant gallery images."
-              >
-                <div className="space-y-4">
+            <SectionCard title="Public Gallery" icon={ImageIcon}>
+              <div className="space-y-6">
+                <div className="relative flex h-32 flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-[#f4d4ca] bg-gray-50 transition-all hover:bg-gray-100">
+                  <UploadCloud size={32} className="mb-2 text-gray-300" />
+                  <p className="text-sm font-bold text-gray-400">Click to upload photos</p>
                   <input
                     type="file"
-                    accept="image/*"
-                    className={inputClass}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-
-                      try {
-                        setUploadingGallery(true);
-                        const uploadedUrl = await uploadImageToCloudinary(file);
-                        setGallery([...gallery, uploadedUrl]);
-                      } catch (error) {
-                        console.error(error);
-                        alert("Gallery upload failed");
-                      } finally {
-                        setUploadingGallery(false);
-                      }
-                    }}
+                    multiple
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    onChange={handleGalleryUpload}
                   />
-
-                  {uploadingGallery && (
-                    <p className="text-sm text-gray-500">Uploading gallery image...</p>
+                  {uploading === "gallery" && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-[2.5rem] bg-white/80">
+                      <Loader2 className="animate-spin text-[#f08c6c]" />
+                    </div>
                   )}
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {gallery.length === 0 && (
-                      <p className="text-sm text-gray-500">No gallery images yet.</p>
-                    )}
-
-                    {gallery.map((img, index) => {
-                      const isConfirming = confirmGalleryRemove === index;
-
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center gap-3 rounded-2xl border border-[#f2e4de] bg-[#fffdfa] p-3"
-                        >
-                          <img
-                            src={img}
-                            alt={`Gallery ${index + 1}`}
-                            className="h-16 w-16 rounded-xl object-cover"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="break-all text-sm text-gray-600">{img}</p>
-                          </div>
-
-                          {!isConfirming ? (
-                            <button
-                              onClick={() => setConfirmGalleryRemove(index)}
-                              className="rounded-xl bg-red-500 px-3 py-2 text-sm text-white"
-                            >
-                              Remove
-                            </button>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              <button
-                                onClick={() => removeGalleryImage(index)}
-                                className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => setConfirmGalleryRemove(null)}
-                                className="rounded-xl border px-3 py-2 text-sm"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
-              </SectionCard>
-            </>
+                <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
+                  {gallery.map((img, idx) => (
+                    <div key={idx} className="group relative aspect-square overflow-hidden rounded-2xl border bg-gray-50">
+                      <img src={img} className="h-full w-full object-cover" />
+                      <button
+                        onClick={() => setGallery(gallery.filter((_, i) => i !== idx))}
+                        className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-all group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </SectionCard>
           )}
 
           {activeTab === "offers" && (
-            <>
-              <SectionCard
-                title="Offers & Perks"
-                subtitle="Show customers extra things they can enjoy at your place."
-              >
-                <div className="flex flex-col gap-3 md:flex-row">
+            <SectionCard title="Perks & Features" icon={Tag}>
+              <div className="space-y-6">
+                <div className="flex gap-2">
                   <input
-                    placeholder="Add offer (e.g. Free Wi-Fi, 10% Discount, Happy Hour)"
-                    className={inputClass}
                     value={offerInput}
-                   onChange={(e) => {
-  const value = e.target.value;
-  setOfferInput(value);
-  setOfferIcon(suggestOfferIcon(value));
-}}
+                    onChange={(e) => setOfferInput(e.target.value)}
+                    placeholder="e.g. Fast WiFi, Terrace Seating..."
+                    className="flex-1 rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 outline-none focus:border-[#f08c6c]"
                   />
-
                   <button
                     onClick={addOffer}
-                    className="rounded-2xl px-5 py-3 font-semibold text-white shadow-md"
-                    style={{ backgroundColor: BRAND }}
+                    className="rounded-2xl bg-[#f08c6c] px-6 font-bold text-white shadow-lg"
                   >
-                    Add Offer
+                    Add Perk
                   </button>
                 </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {offers.length === 0 && (
-                    <p className="text-sm text-gray-500">No offers added yet.</p>
-                  )}
-
-                  {offers.map((offer, index) => {
-                    const isConfirming = confirmOfferRemove === index;
-
-                    return (
-                      <div
-                        key={index}
-                        className="flex items-center gap-3 rounded-2xl border border-[#f2e4de] bg-[#fffdfa] p-4"
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {offers.map((offer, idx) => (
+                    <div key={idx} className="flex items-center gap-3 rounded-3xl border border-[#f4d4ca] bg-gray-50 p-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#f08c6c]">
+                        {offer.icon === "wifi" ? <Wifi size={18} /> : 
+                         offer.icon === "car" ? <Car size={18} /> : 
+                         offer.icon === "truck" ? <Truck size={18} /> : 
+                         offer.icon === "coffee" ? <Coffee size={18} /> : <Tag size={18} />}
+                      </div>
+                      <span className="flex-1 text-sm font-bold text-gray-700">{offer.text}</span>
+                      <button
+                        onClick={() => setOffers(offers.filter((_, i) => i !== idx))}
+                        className="text-gray-300 hover:text-red-500"
                       >
-                        <div
-                          className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
-                          style={{ backgroundColor: `${BRAND}20` }}
-                        >
-                          {typeof offer === "string" ? "✨" : offer.icon}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-800">
-  {typeof offer === "string" ? offer : offer.text}
-</p>
-                        </div>
-
-                        {!isConfirming ? (
-                          <button
-                            onClick={() => setConfirmOfferRemove(index)}
-                            className="rounded-xl bg-red-500 px-3 py-2 text-sm text-white"
-                          >
-                            Remove
-                          </button>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            <button
-                              onClick={() => removeOffer(index)}
-                              className="rounded-xl bg-red-700 px-3 py-2 text-sm text-white"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setConfirmOfferRemove(null)}
-                              className="rounded-xl border px-3 py-2 text-sm"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              </SectionCard>
-            </>
-          )}
-        </section>
-
-        <aside className="space-y-6">
-          <div className="sticky top-24 space-y-6">
-            <section className="rounded-3xl border border-[#f4d4ca] bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-xl font-bold" style={{ color: BRAND }}>
-                Public Preview
-              </h2>
-
-              <div className="space-y-3 text-sm text-gray-600">
-                <p>
-                  <span className="font-semibold text-gray-900">Name:</span>{" "}
-                  {name || "Not set"}
-                </p>
-                <p>
-                  <span className="font-semibold text-gray-900">Slug:</span>{" "}
-                  {slug || "Not set"}
-                </p>
-                <p>
-                  <span className="font-semibold text-gray-900">Menu groups:</span>{" "}
-                  {menu.length}
-                </p>
-                <p>
-                  <span className="font-semibold text-gray-900">Gallery images:</span>{" "}
-                  {gallery.length}
-                </p>
-                <p>
-                  <span className="font-semibold text-gray-900">Offers:</span>{" "}
-                  {offers.length}
-                </p>
               </div>
-            </section>
+            </SectionCard>
+          )}
 
-            {slug && publicUrl && (
-              <section className="rounded-3xl border border-[#f4d4ca] bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-xl font-bold" style={{ color: BRAND }}>
-                  Your Smart QR
-                </h2>
-
-                <div className="rounded-[28px] border border-[#efd6ce] bg-gradient-to-b from-[#fff8f5] to-white p-5 shadow-sm">
-                  <div className="mb-4 text-center">
-                    <p className="text-sm font-semibold" style={{ color: BRAND }}>
-                      ScanDish
-                    </p>
-                    <p className="text-sm text-gray-500">Smart QR Scan Experience</p>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <div className="relative rounded-[28px] border border-[#f1ddd6] bg-white p-5 shadow-sm">
-                      <QRCodeSVG
-                        id="restaurant-qr"
-                        value={publicUrl}
-                        size={220}
-                        level="H"
-                        fgColor={QR_DARK}
-                        bgColor="#ffffff"
-                        includeMargin
-                      />
-
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-[#f2ddd6] bg-white p-1 shadow-sm">
-                          <Image
-                            src="/images/logo.jpg"
-                            alt="ScanDish logo"
-                            fill
-                            className="object-cover"
-                            sizes="64px"
-                          />
+          {activeTab === "account" && (
+            <div className="space-y-6">
+              <SectionCard title="Security & Account" icon={ShieldCheck}>
+                <div className="space-y-6">
+                  <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Mail className="text-[#f08c6c]" size={20} />
+                        <div>
+                          <p className="text-xs font-black uppercase text-gray-400 tracking-widest">Login Email</p>
+                          <p className="font-bold">{user?.email}</p>
                         </div>
                       </div>
+                      {user?.emailVerified ? (
+                        <div className="flex items-center gap-1 text-[10px] font-black uppercase text-green-500 bg-green-50 px-3 py-1 rounded-full">
+                          <CircleCheck size={12} /> Verified
+                        </div>
+                      ) : (
+                        <button
+                          onClick={verifyEmail}
+                          disabled={verifying}
+                          className="text-[10px] font-black uppercase text-white bg-[#f08c6c] px-3 py-1 rounded-full active:scale-95 disabled:opacity-50"
+                        >
+                          {verifying ? "Sending..." : "Verify"}
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="mt-4 text-center">
-                    <p className="text-lg font-semibold text-gray-900">
-                      {name || "Restaurant"}
-                    </p>
-                    <p className="mt-1 break-all text-sm text-gray-500">{publicUrl}</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-gray-50 p-4">
+                      <div className="flex items-center gap-2 text-gray-400 mb-1">
+                         <Clock size={14}/> <span className="text-[10px] font-black uppercase">Last Sign In</span>
+                      </div>
+                      <p className="text-xs font-bold text-gray-600">{user?.metadata.lastSignInTime}</p>
+                    </div>
+                    <div className="rounded-2xl bg-gray-50 p-4">
+                      <div className="flex items-center gap-2 text-gray-400 mb-1">
+                         <Smartphone size={14}/> <span className="text-[10px] font-black uppercase">Device Info</span>
+                      </div>
+                      <p className="text-xs font-bold text-gray-600">Securely Logged In</p>
+                    </div>
                   </div>
+
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <FormInput label="Current Password" type="password" value={curPass} onChange={setCurPass} />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <FormInput label="New Password" type="password" value={newPass} onChange={setNewPass} />
+                      <FormInput label="Confirm New Password" type="password" value={confPass} onChange={setConfPass} />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={saving || !curPass}
+                      className="w-full rounded-3xl bg-gray-900 py-4 font-black text-white shadow-xl transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      Update Password
+                    </button>
+                  </form>
                 </div>
+              </SectionCard>
+            </div>
+          )}
+        </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-3">
-                  <button
-                    onClick={downloadQRCodePNG}
-                    className="w-full rounded-2xl px-5 py-3 font-semibold text-white shadow-md"
-                    style={{ backgroundColor: BRAND }}
-                  >
-                    Download QR as PNG
-                  </button>
+        {/* RIGHT PREVIEW PANEL */}
+        <aside className="space-y-6">
+          <div className="sticky top-24 space-y-6">
+            {/* SUBSCRIPTION CARD */}
+            <div className="rounded-[2.5rem] bg-gray-900 p-6 text-white shadow-xl relative overflow-hidden">
+               <div className="relative z-10">
+                 <div className="flex items-center justify-between mb-4">
+                    <span className="rounded-lg bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest">{plan} Plan</span>
+                    <Star className="text-orange-400" size={20} />
+                 </div>
+                 <h3 className="text-xl font-black mb-1">{name || "Your Restaurant"}</h3>
+                 <p className="text-xs font-medium text-white/50 mb-4 italic">
+                    {daysRemaining !== null ? `${daysRemaining} days remaining` : "Premium Plan"}
+                 </p>
+                 <button className="w-full py-3 rounded-2xl bg-white text-gray-900 font-black text-sm active:scale-95 transition-all">Renew Subscription</button>
+               </div>
+               <div className="absolute -right-10 -bottom-10 h-32 w-32 bg-white/5 blur-3xl rounded-full" />
+            </div>
 
-                  <button
-                    onClick={downloadQRCodeSVG}
-                    className="w-full rounded-2xl border border-[#efd6ce] bg-white px-5 py-3 font-semibold text-gray-700"
-                  >
-                    Download QR as SVG
-                  </button>
+            {/* QR CODE CARD */}
+            <div className="rounded-[2.5rem] border border-[#f4d4ca] bg-white p-6 shadow-sm">
+              <h4 className="mb-4 text-lg font-black flex items-center gap-2 text-gray-900">
+                Menu QR Code
+              </h4>
+              <div className="flex flex-col items-center justify-center rounded-3xl bg-[#fff8f5] p-6 text-center">
+                <div className="rounded-3xl bg-white p-4 shadow-lg">
+                  <QRCodeSVG
+                    id="restaurant-qr"
+                    value={publicUrl || "https://scandish.app"}
+                    size={160}
+                    level="H"
+                    fgColor={QR_DARK}
+                    includeMargin
+                  />
                 </div>
-              </section>
-            )}
-
-            <section className="rounded-3xl bg-[#111827] p-6 text-white shadow-lg">
-              <h3 className="text-lg font-bold">Ready to Publish</h3>
-              <p className="mt-2 text-sm text-white/70">
-                Once you save, your public page updates with the latest menu, offers,
-                gallery, and branding.
-              </p>
-
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="mt-5 w-full rounded-2xl px-5 py-3 font-semibold text-white disabled:opacity-50"
-                style={{ backgroundColor: BRAND }}
+                <p className="mt-4 font-mono text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  /r/{slug || "slug-id"}
+                </p>
+              </div>
+              <div className="mt-4 grid gap-2">
+                 <button onClick={() => downloadQR('png')} className="rounded-xl bg-[#f08c6c] py-3 text-sm font-bold text-white shadow-md active:scale-95 transition-all">Download PNG</button>
+                 <button onClick={() => downloadQR('svg')} className="rounded-xl border border-[#f4d4ca] py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50">Download SVG</button>
+              </div>
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 flex w-full items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest text-[#f08c6c]"
               >
-                {saving ? "Publishing..." : "Publish on Public"}
-              </button>
-            </section>
+                Go to Public Link <ExternalLink size={12} />
+              </a>
+            </div>
+
+            {/* SCAN DISH SUPPORT */}
+            <div className="rounded-[2.5rem] border border-[#f4d4ca] bg-white p-6 shadow-sm">
+               <h4 className="font-black mb-1">Kigali Support</h4>
+               <p className="text-xs font-medium text-gray-400 mb-4 leading-relaxed">Contact ScanDish team directly if you have any issues.</p>
+               <div className="grid gap-2">
+                 <a href="https://wa.me/250781822350" target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-2xl bg-green-500 p-3 text-sm font-bold text-white">
+                   <FaWhatsapp size={20} /> Send WhatsApp
+                 </a>
+                 <a href="tel:+250781822350" className="flex items-center gap-3 rounded-2xl bg-blue-500 p-3 text-sm font-bold text-white">
+                   <Phone size={18} /> Direct Call
+                 </a>
+               </div>
+            </div>
           </div>
         </aside>
       </div>
 
-      {/* WhatsApp Help */}
-<div className="fixed bottom-5 left-5 z-50">
-  <a
-    href="https://wa.me/250781822350"
-    target="_blank"
-    rel="noreferrer"
-    className="flex items-center gap-3 rounded-full bg-green-500 px-5 py-3 text-sm font-bold text-white shadow-2xl hover:scale-105 transition-all"
-  >
-    <FaWhatsapp className="w-5 h-5 animate-bounce" />
-    <span>Need help?</span>
-  </a>
-</div>
+      {/* MODALS */}
+      {itemToDelete && (
+        <Modal title="Confirm Item Removal" onClose={() => setItemToDelete(null)}>
+          <div className="space-y-6">
+            <p className="font-medium text-gray-500 leading-relaxed">
+              Remove <span className="font-black text-gray-900">"{itemToDelete.name}"</span>? 
+              This will update your public menu immediately.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmDeleteItem}
+                className="flex-1 rounded-2xl bg-red-600 py-4 font-black text-white active:scale-95 transition-all"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 rounded-2xl bg-gray-100 py-4 font-black text-gray-500"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
-{/* Call Help */}
-<div className="fixed bottom-5 right-5 z-50">
-  <a
-    href="tel:+250781822350"
-    className="flex items-center gap-3 rounded-full bg-[#2c9af9] px-5 py-3 text-sm font-bold text-white shadow-2xl hover:scale-105 transition-all"
-  >
-    <Phone className="w-5 h-5 animate-pulse" />
-    <span>Call us</span>
-  </a>
-</div>
+      {showCatManager && (
+        <Modal title="Category Manager" onClose={() => setShowCatManager(false)}>
+          <div className="space-y-4">
+            <div className="max-h-[40vh] overflow-y-auto pr-2 space-y-2">
+              {existingCategories.map((cat) => (
+                <div key={cat} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  {catToRename === cat ? (
+                    <input
+                      autoFocus
+                      className="flex-1 rounded-lg border-2 border-[#f08c6c] bg-white px-3 py-1 font-bold outline-none"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleRenameCategory()}
+                    />
+                  ) : (
+                    <span className="font-bold text-gray-700">{cat}</span>
+                  )}
+                  <div className="flex gap-1">
+                    {catToRename === cat ? (
+                      <button onClick={handleRenameCategory} className="p-2 text-green-600"><CheckCircle2 size={18}/></button>
+                    ) : (
+                      <button onClick={() => { setCatToRename(cat); setNewCatName(cat); }} className="p-2 text-gray-400 hover:text-[#f08c6c]"><Edit3 size={18} /></button>
+                    )}
+                    <button onClick={() => handleDeleteCategory(cat)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowCatManager(false)}
+              className="w-full rounded-2xl bg-gray-900 py-4 font-black text-white shadow-xl"
+            >
+              Close Window
+            </button>
+          </div>
+        </Modal>
+      )}
 
-      <footer className="border-t border-[#f4d4ca] bg-white px-4 py-6 md:px-6">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-sm text-gray-500 md:flex-row">
-          <p>ScanDish Systems © 2026</p>
-          <p>Smart QR Restaurant Experience</p>
-        </div>
+      <footer className="border-t border-[#f4d4ca] bg-white py-10 mt-12 text-center text-[10px] font-black uppercase tracking-widest text-gray-300">
+        ScanDish Rwanda © 2026 • Professional QR Menu Solutions
       </footer>
     </main>
+  );
+}
+
+// --- SUB-COMPONENTS ---
+
+function FormInput({ label, value, onChange, type = "text" }: any) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-5 py-4 font-medium outline-none transition-all focus:border-[#f08c6c] focus:ring-4 focus:ring-[#f08c6c]/5"
+      />
+    </div>
+  );
+}
+
+function ColorInput({ label, value, onChange }: any) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 text-center block w-full">{label}</label>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-12 w-full cursor-pointer rounded-xl border-4 border-white bg-gray-100 shadow-sm"
+      />
+    </div>
+  );
+}
+
+function UploadBox({ label, image, onUpload, uploading, isCover }: any) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</label>
+      <div className="relative flex aspect-video w-full flex-col items-center justify-center overflow-hidden rounded-[2rem] border-2 border-dashed border-[#f4d4ca] bg-gray-50 transition-all hover:bg-gray-100">
+        {image ? (
+          <img src={image} className={`h-full w-full ${isCover ? "object-cover" : "object-contain p-6"}`} />
+        ) : (
+          <UploadCloud size={32} className="text-gray-200" />
+        )}
+        <input
+          type="file"
+          className="absolute inset-0 cursor-pointer opacity-0"
+          onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+        />
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+            <Loader2 className="animate-spin text-[#f08c6c]" />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

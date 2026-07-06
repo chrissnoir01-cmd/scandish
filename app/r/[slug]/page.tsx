@@ -108,26 +108,41 @@ const offerIconMap: Record<string, any> = {
     return categories.map((cat: Record<string, any>) => cat.items?.[0]).filter(Boolean);
   }, [categories]);
 
-  const filteredByCategory =
-    activeCategory === "Overview"
+  const allItems = useMemo(() => {
+    return categories.flatMap((cat: Record<string, any>) => cat.items || []);
+  }, [categories]);
+
+  const displayedItems = useMemo(() => {
+    const search = searchQuery.trim().toLowerCase();
+    
+    // If user is searching, look through ALL items in ALL categories
+    if (search) {
+      return allItems
+        .filter(
+          (item: Record<string, any>) =>
+            item.name?.toLowerCase().includes(search) ||
+            item.description?.toLowerCase().includes(search)
+        )
+        .sort((a: Record<string, any>, b: Record<string, any>) => {
+          const aHasImage = Boolean(a.image);
+          const bHasImage = Boolean(b.image);
+          if (aHasImage === bHasImage) return 0;
+          return aHasImage ? -1 : 1;
+        });
+    }
+
+    // If NOT searching, filter items by the selected category tab
+    const filteredByTab = activeCategory === "Overview"
       ? overviewItems
       : categories.find((cat: Record<string, any>) => cat.category === activeCategory)?.items || [];
 
-  const displayedItems = (
-  searchQuery.trim()
-    ? filteredByCategory.filter(
-        (item: Record<string, any>) =>
-          item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : filteredByCategory
-).sort((a: Record<string, any>, b: Record<string, any>) => {
-  const aHasImage = Boolean(a.image);
-  const bHasImage = Boolean(b.image);
-
-  if (aHasImage === bHasImage) return 0;
-  return aHasImage ? -1 : 1;
-});
+    return [...filteredByTab].sort((a: Record<string, any>, b: Record<string, any>) => {
+      const aHasImage = Boolean(a.image);
+      const bHasImage = Boolean(b.image);
+      if (aHasImage === bHasImage) return 0;
+      return aHasImage ? -1 : 1;
+    });
+  }, [searchQuery, activeCategory, allItems, overviewItems, categories]);
 
   const theme = {
     primaryColor: restaurant?.theme?.primaryColor || "#f08c6c",

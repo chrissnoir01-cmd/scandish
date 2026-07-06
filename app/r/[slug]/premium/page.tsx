@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import CamelliaTemplate from "@/components/premium/CamelliaTemplate";
+import SampleTemplate from "@/components/premium/SampleTemplate";
 
 export default function PremiumRestaurantPage() {
   const params = useParams();
@@ -69,6 +70,8 @@ export default function PremiumRestaurantPage() {
     case "camellia":
       return <CamelliaTemplate restaurant={restaurant} />;
 
+      case "sample":
+        return <SampleTemplate restaurant={restaurant} />;
     default:
       return (
         <main className="min-h-screen flex items-center justify-center bg-black text-white">

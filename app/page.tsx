@@ -21,7 +21,10 @@ import {
   Zap,
   Store,
   MousePointer2,
-  LayoutDashboard
+  LayoutDashboard,
+  Gem,
+  Settings,
+  MessagesSquare
 } from 'lucide-react';
 import { FaInstagram, FaFacebook, FaTiktok, FaXTwitter } from "react-icons/fa6";
 
@@ -40,7 +43,6 @@ export default function HomePage() {
   return (
   <main className="min-h-screen bg-white text-[#1a1a1a] selection:bg-[#f08c6c] selection:text-white overflow-x-hidden">
       {/* 1. STICKY NAVBAR */}
-
       <header 
         className={`fixed top-0 w-full z-50 transition-all duration-500 ${
           scrolled ? "bg-white/90 backdrop-blur-md py-3 shadow-sm border-b border-gray-100" : "bg-transparent py-6"
@@ -55,24 +57,24 @@ export default function HomePage() {
               Scan<span style={{ color: BRAND_COLOR }}>Dish</span>
             </span>
           </Link>
-<nav className="hidden lg:flex items-center gap-10">
-  {[
-    { label: "Features", href: "#features" },
-    { label: "How it Works", href: "#how-it-works" },
-    { label: "Why ScanDish", href: "#why-scandish" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Contact", href: "#contact" },
-    { label: "FAQ", href: "#faq" },
-  ].map((item) => (
-    <a
-      key={item.label}
-      href={item.href}
-      className="text-sm font-bold text-gray-500 hover:text-[#f08c6c] transition-colors"
-    >
-      {item.label}
-    </a>
-  ))}
-</nav>
+          <nav className="hidden lg:flex items-center gap-10">
+            {[
+              { label: "Features", href: "#features" },
+              { label: "How it Works", href: "#how-it-works" },
+              { label: "Why ScanDish", href: "#why-scandish" },
+              { label: "Pricing", href: "#pricing" },
+              { label: "Contact", href: "#contact" },
+              { label: "FAQ", href: "#faq" },
+            ].map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                className="text-sm font-bold text-gray-500 hover:text-[#f08c6c] transition-colors"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
 
           <div className="flex items-center gap-4">
             <Link
@@ -111,7 +113,6 @@ export default function HomePage() {
 
       {/* 2. HERO SECTION */}
       <section className="relative pt-32 pb-20 lg:pt-52 lg:pb-40 overflow-hidden bg-[#fafafa]">
-        {/* Background blobs for depth */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#f08c6c]/10 rounded-full blur-[120px] -mr-40 -mt-20" />
         <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-[#f08c6c]/5 rounded-full blur-[100px] -ml-20" />
 
@@ -145,21 +146,15 @@ export default function HomePage() {
               </div>
             </motion.div>
 
-            {/* HIGH-END PHONE MOCKUP FEATURING food3.jpg */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
               transition={{ duration: 1, ease: "easeOut" }}
               className="relative flex justify-center lg:justify-end"
             >
-              {/* Main Phone Device Frame */}
               <div className="relative w-[320px] h-[650px] bg-[#1a1a1a] rounded-[3.5rem] border-[10px] border-[#1a1a1a] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] overflow-hidden">
-                {/* iPhone Notch */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#1a1a1a] rounded-b-3xl z-30" />
-                
-                {/* Inner Screen Content */}
                 <div className="absolute inset-0 bg-white pt-10 overflow-y-auto no-scrollbar">
-                  {/* Digital Menu Hero Image */}
                   <div className="h-60 w-full relative">
                     <Image 
                         src="/images/hero.png" 
@@ -174,8 +169,6 @@ export default function HomePage() {
                         <h4 className="text-lg font-black leading-tight">Kiza Restaurant</h4>
                     </div>
                   </div>
-
-                  {/* Menu Content Placeholder */}
                   <div className="p-5">
                     <div className="flex gap-2 mb-8 overflow-x-auto no-scrollbar">
                         {['All', 'Mains', 'Drinks', 'Sides'].map((cat, i) => (
@@ -197,21 +190,6 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
-
-              {/* Floating Dashboard Element */}
-              <motion.div 
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -left-12 top-1/4 bg-white p-5 rounded-3xl shadow-2xl border border-gray-100 hidden md:block z-40"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#f08c6c]/10 flex items-center justify-center text-[#f08c6c]"><Zap size={16} /></div>
-                    <span className="text-xs font-black">Live Updates</span>
-                </div>
-                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="w-2/3 h-full bg-[#f08c6c]" />
-                </div>
-              </motion.div>
             </motion.div>
           </div>
         </div>
@@ -272,7 +250,119 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 5. HOW IT WORKS SECTION */}
+      {/* 5. PRICING SECTION - UPDATED */}
+      <section id="pricing" className="py-32 bg-[#fffcfb] px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-20">
+            <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4">Transparent Pricing</h2>
+            <h3 className="text-4xl md:text-6xl font-black tracking-tight mb-6">Choose the perfect plan.</h3>
+            <p className="text-lg text-gray-500 max-w-2xl mx-auto">Flexible options designed for every stage of your restaurant's digital growth.</p>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-8 items-stretch">
+            
+            {/* STANDARD PLAN */}
+            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-white border border-gray-100 rounded-[3rem] p-10 shadow-sm hover:shadow-2xl transition-all">
+              <div className="mb-8">
+                <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
+                  <Utensils size={24} />
+                </div>
+                <h3 className="text-2xl font-black mb-2">Standard</h3>
+                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Essential Digital Menu</p>
+              </div>
+
+              <div className="space-y-4 mb-10">
+                <div className="flex flex-col">
+                  <span className="text-3xl font-black">20,000 <span className="text-sm text-gray-400">RWF</span></span>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
+                </div>
+                <div className="h-px bg-gray-50 w-full" />
+                <div className="flex flex-col">
+                  <span className="text-xl font-black">50,000 <span className="text-sm text-gray-400">RWF / 6 Mos</span></span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xl font-black">90,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                </div>
+              </div>
+
+              <ul className="space-y-4 mb-10 flex-grow">
+                {['QR digital menu', 'Menu categories', 'Images + text support', 'Offers section', 'Gallery', 'WhatsApp integration', 'Location & map', 'Theme colors', 'Search menu', 'Dashboard management'].map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-600">
+                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
+                  </li>
+                ))}
+              </ul>
+
+              <Link href="/login" className="w-full py-5 rounded-2xl bg-gray-900 text-white text-center font-black hover:bg-[#f08c6c] transition-colors">Select Standard</Link>
+            </motion.div>
+
+            {/* PREMIUM PLAN */}
+            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-white border-4 border-[#f08c6c] rounded-[3rem] p-10 shadow-2xl relative lg:scale-105 z-10">
+              <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-[#f08c6c] text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">Recommended</div>
+              <div className="mb-8">
+                <div className="w-12 h-12 bg-[#f08c6c]/10 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
+                  <Gem size={24} />
+                </div>
+                <h3 className="text-2xl font-black mb-2">Premium</h3>
+                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Luxury Experience</p>
+              </div>
+
+              <div className="space-y-4 mb-10">
+                <div className="flex flex-col">
+                  <span className="text-3xl font-black">50,000 <span className="text-sm text-gray-400">RWF</span></span>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
+                </div>
+                <div className="h-px bg-gray-50 w-full" />
+                <div className="flex flex-col">
+                  <span className="text-4xl font-black text-[#f08c6c]">150,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                </div>
+              </div>
+
+              <ul className="space-y-4 mb-10 flex-grow">
+                <li className="flex items-center gap-3 text-sm font-black text-gray-900 mb-4 pb-4 border-b border-gray-100">
+                   Everything in Standard
+                </li>
+                {['Custom premium public page', 'Luxury restaurant UI', 'Premium branding', 'Premium template system', 'Better visual experience', 'Priority support'].map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-600">
+                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
+                  </li>
+                ))}
+              </ul>
+
+              <Link href="/login" className="w-full py-5 rounded-2xl text-white text-center font-black shadow-xl shadow-[#f08c6c]/30 hover:scale-[1.02] transition-all" style={{ backgroundColor: BRAND_COLOR }}>Select Premium</Link>
+            </motion.div>
+
+            {/* PREMIUM CUSTOM */}
+            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-[#1a1a1a] text-white rounded-[3rem] p-10 shadow-sm hover:shadow-2xl transition-all">
+              <div className="mb-8">
+                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
+                  <Settings size={24} />
+                </div>
+                <h3 className="text-2xl font-black mb-2">Premium Custom</h3>
+                <p className="text-gray-500 text-sm font-bold uppercase tracking-widest">Enterprise Solution</p>
+              </div>
+
+              <div className="mb-10">
+                <span className="text-3xl font-black">Negotiated</span>
+                <p className="text-gray-500 text-sm font-medium mt-2">Tailored pricing based on your unique requirements.</p>
+              </div>
+
+              <ul className="space-y-4 mb-10 flex-grow">
+                {['Fully custom restaurant system', 'Unique dashboard', 'Custom webpage', 'Booking systems', 'Future custom features', 'Enterprise build'].map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-400">
+                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
+                  </li>
+                ))}
+              </ul>
+
+              <Link href="#contact" className="w-full py-5 rounded-2xl bg-white text-gray-900 text-center font-black hover:bg-gray-200 transition-colors">Contact Us</Link>
+            </motion.div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* 6. HOW IT WORKS SECTION */}
       <section id="how-it-works" className="py-32 bg-[#1a1a1a] text-white rounded-[4rem] mx-4 lg:mx-8 overflow-hidden relative">
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <div className="text-center mb-24">
@@ -296,116 +386,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-<section id="pricing" className="py-24 bg-[#fffcfb] px-6">
-  <div className="max-w-6xl mx-auto">
-    <div className="text-center mb-16">
-      <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 tracking-tight">
-        Simple Pricing for Restaurants
-      </h2>
-      <div className="w-24 h-1.5 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
-      <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-        One-time setup fee plus flexible subscription plans designed to help your business grow.
-      </p>
-    </div>
 
-    <div className="grid md:grid-cols-3 gap-8 items-stretch">
-      
-      {/* Setup Fee */}
-      <div className="group bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col">
-        <div className="mb-8">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Setup</h3>
-          <p className="text-gray-500 text-sm">One-time kickstart</p>
-        </div>
-
-        <div className="mb-8">
-          <span className="text-4xl font-black text-gray-900">15,000</span>
-          <span className="text-gray-500 font-medium ml-1">RWF</span>
-        </div>
-
-        <ul className="space-y-4 mb-8 flex-grow">
-          <li className="flex items-center text-gray-600 text-sm">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Professional page creation
-          </li>
-          <li className="flex items-center text-gray-600 text-sm">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Menu items upload
-          </li>
-        </ul>
-
-        <div className="pt-6 border-t border-gray-50 mt-auto">
-          <p className="text-xs text-center text-gray-400 font-medium">Get started today</p>
-        </div>
-      </div>
-
-      {/* 6 Months - Featured */}
-      <div className="relative group bg-white border-2 border-[#f08c6c] rounded-[2rem] p-8 shadow-2xl transform md:scale-105 z-10 flex flex-col">
-        <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-[#f08c6c] text-white px-6 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase">
-          Most Popular
-        </div>
-
-        <div className="mb-8">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">6 Months</h3>
-          <p className="text-gray-500 text-sm">Standard commitment</p>
-        </div>
-
-        <div className="mb-8">
-          <span className="text-5xl font-black text-[#f08c6c]">35,000</span>
-          <span className="text-gray-500 font-medium ml-1">RWF</span>
-        </div>
-
-        <ul className="space-y-4 mb-8 flex-grow">
-          <li className="flex items-center text-gray-700 text-sm font-medium">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Perfect for growing venues
-          </li>
-          <li className="flex items-center text-gray-700 text-sm font-medium">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Full platform access
-          </li>
-          <li className="flex items-center text-gray-700 text-sm font-medium">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Priority support
-          </li>
-        </ul>
-
-        <button className="w-full py-4 bg-[#f08c6c] hover:bg-[#d97a5a] text-white font-bold rounded-xl transition-colors shadow-lg shadow-[#f08c6c]/20">
-          Select Plan
-        </button>
-      </div>
-
-      {/* 1 Year */}
-      <div className="group bg-white border border-gray-100 rounded-[2rem] p-8 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col">
-        <div className="mb-8">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">1 Year</h3>
-          <p className="text-gray-500 text-sm">Maximum value</p>
-        </div>
-
-        <div className="mb-8">
-          <span className="text-4xl font-black text-gray-900">60,000</span>
-          <span className="text-gray-500 font-medium ml-1">RWF</span>
-        </div>
-
-        <ul className="space-y-4 mb-8 flex-grow">
-          <li className="flex items-center text-gray-600 text-sm">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            Best value for long-term
-          </li>
-          <li className="flex items-center text-gray-600 text-sm">
-            <svg className="w-5 h-5 text-[#f08c6c] mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-            2 months free equivalent
-          </li>
-        </ul>
-
-        <div className="pt-6 border-t border-gray-50 mt-auto">
-          <p className="text-xs text-center text-gray-400 font-medium">Sustainable growth</p>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-      {/* 6. WHY SCANDISH SECTION (FEATURING food3.jpg again for consistency) */}
+      {/* 7. WHY SCANDISH SECTION */}
       <section id="why-scandish" className="py-32 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-20 items-center">
@@ -414,7 +396,6 @@ export default function HomePage() {
                     <Image src="/images/image.jpg" width={800} height={1000} alt="Professional Menu" className="w-full h-auto object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                 </div>
-                {/* Accent shape */}
                 <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-[#f08c6c] rounded-full blur-3xl opacity-20" />
             </div>
             <div>
@@ -443,8 +424,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 7. CTA BANNER */}
-      
+      {/* 8. CTA BANNER */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div 
@@ -464,7 +444,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 8. FAQ SECTION */}
+      {/* 9. FAQ SECTION */}
       <section id="faq" className="py-32 bg-white">
         <div className="max-w-3xl mx-auto px-6">
           <div className="text-center mb-16">
@@ -504,62 +484,46 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 10. CONTACT SECTION */}
       <section id="contact" className="py-24 px-6 bg-white overflow-hidden">
-  <div className="max-w-4xl mx-auto text-center">
-    
-    {/* Header with Animation */}
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <h2 className="text-4xl md:text-5xl font-extrabold mb-4 text-gray-900 tracking-tight">
-        Get in Touch
-      </h2>
-      <div className="w-16 h-1 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
-      <p className="text-gray-600 text-lg mb-12 max-w-md mx-auto">
-        Ready to digitize your menu? Our team is here to help you get started.
-      </p>
-    </div>
+        <div className="max-w-4xl mx-auto text-center">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 text-gray-900 tracking-tight">
+              Get in Touch
+            </h2>
+            <div className="w-16 h-1 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
+            <p className="text-gray-600 text-lg mb-12 max-w-md mx-auto">
+              Ready to digitize your menu? Our team is here to help you get started.
+            </p>
+          </div>
 
-    <div className="grid md:grid-cols-2 gap-6">
-      
-      {/* Phone Card */}
-      <a 
-        href="tel:0781822350"
-        className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-left-8 duration-700"
-      >
-        <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
-          <svg className="w-6 h-6 text-[#f08c6c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-          </svg>
+          <div className="grid md:grid-cols-2 gap-6">
+            <a 
+              href="tel:0781822350"
+              className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-left-8 duration-700"
+            >
+              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                <Smartphone className="w-6 h-6 text-[#f08c6c]" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Call Us</h3>
+              <p className="text-2xl font-bold text-gray-800">0781822350</p>
+            </a>
+
+            <a 
+              href="mailto:support@scandish.online"
+              className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-right-8 duration-1000"
+            >
+              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                <MessagesSquare className="w-6 h-6 text-[#f08c6c]" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Email Us</h3>
+              <p className="text-2xl font-bold text-gray-800 truncate">support@scandish.online</p>
+            </a>
+          </div>
         </div>
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Call Us</h3>
-        <p className="text-2xl font-bold text-gray-800">0781822350</p>
-      </a>
+      </section>
 
-      {/* Email Card */}
-      <a 
-        href="mailto:support@scandish.online"
-        className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-right-8 duration-1000"
-      >
-        <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
-          <svg className="w-6 h-6 text-[#f08c6c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-          </svg>
-        </div>
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Email Us</h3>
-        <p className="text-2xl font-bold text-gray-800 truncate">support@scandish.online</p>
-      </a>
-
-    </div>
-
-    {/* Subtle footer element for the contact section */}
-    <div className="mt-16 opacity-50">
-      <p className="text-sm text-gray-500 font-medium tracking-tighter italic">
-        Typically responds within 2 hours
-      </p>
-    </div>
-  </div>
-</section>
-
-      {/* 9. FOOTER */}
+      {/* 11. FOOTER */}
       <footer className="bg-gray-200 pt-32 pb-12 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-16 mb-24">
@@ -589,17 +553,16 @@ export default function HomePage() {
                 <li><a href="#features" className="hover:text-[#f08c6c]">Branding</a></li>
               </ul>
             </div>
- <div>
-  <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">MAIN LINKS</h5>
-    <ul className="space-y-4 text-sm font-bold text-gray-500">
-      <li><a href="/login" className="hover:text-[#f08c6c]">Login</a></li>
-      <li><a href="/company-signup" className="hover:text-[#f08c6c]">Signup</a></li>
-      <li><a href="#pricing" className="hover:text-[#f08c6c]">Pricing</a></li>
-      <li><a href="#features" className="hover:text-[#f08c6c]">Features</a></li>
-      <li><a href="#contact" className="hover:text-[#f08c6c]">Contact</a></li>
-    </ul>  
-  </div>
-
+            <div>
+              <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">MAIN LINKS</h5>
+              <ul className="space-y-4 text-sm font-bold text-gray-500">
+                <li><a href="/login" className="hover:text-[#f08c6c]">Login</a></li>
+                <li><a href="/company-signup" className="hover:text-[#f08c6c]">Signup</a></li>
+                <li><a href="#pricing" className="hover:text-[#f08c6c]">Pricing</a></li>
+                <li><a href="#features" className="hover:text-[#f08c6c]">Features</a></li>
+                <li><a href="#contact" className="hover:text-[#f08c6c]">Contact</a></li>
+              </ul>  
+            </div>
             <div>
               <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">Legal</h5>
               <ul className="space-y-4 text-sm font-bold text-gray-500">
