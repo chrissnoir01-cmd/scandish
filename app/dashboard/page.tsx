@@ -788,7 +788,7 @@ export default function DashboardPage() {
                   <UploadBox
                     label="Business Logo"
                     image={logo}
-                    onUpload={async (file) => {
+                   onUpload={async (file: File) => {
                       setUploading("logo");
                       const url = await uploadImageToCloudinary(file);
                       setLogo(url);
@@ -800,7 +800,7 @@ export default function DashboardPage() {
                     label="Cover Photo"
                     image={coverImage}
                     isCover
-                    onUpload={async (file) => {
+                    onUpload={async (file: File) => {
                       setUploading("cover");
                       const url = await uploadImageToCloudinary(file);
                       setCoverImage(url);
