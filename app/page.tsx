@@ -124,7 +124,7 @@ export default function HomePage() {
               transition={{ duration: 0.8 }}
             >
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#f08c6c]/10 text-[#f08c6c] text-[10px] font-black uppercase tracking-widest mb-8 border border-[#f08c6c]/20">
-                <Sparkles size={14} />A Step to Digital Excellence
+                A Step to Digital Excellence
               </div>
               <h1 className="text-5xl md:text-7xl font-black leading-[1.1] tracking-tight mb-8">
                 Turn every QR scan into a <span style={{ color: BRAND_COLOR }}>beautiful</span> Branding Page
@@ -278,10 +278,10 @@ export default function HomePage() {
                 </div>
                 <div className="h-px bg-gray-50 w-full" />
                 <div className="flex flex-col">
-                  <span className="text-xl font-black">50,000 <span className="text-sm text-gray-400">RWF / 6 Mos</span></span>
+                  <span className="text-xl font-black">72,000 <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-black">90,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                  <span className="text-xl font-black">144,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
                 </div>
               </div>
 
@@ -309,12 +309,15 @@ export default function HomePage() {
 
               <div className="space-y-4 mb-10">
                 <div className="flex flex-col">
-                  <span className="text-3xl font-black">50,000 <span className="text-sm text-gray-400">RWF</span></span>
+                  <span className="text-3xl font-black">80,000 <span className="text-sm text-gray-400">RWF</span></span>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
                 </div>
                 <div className="h-px bg-gray-50 w-full" />
                 <div className="flex flex-col">
-                  <span className="text-4xl font-black text-[#f08c6c]">150,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                  <span className="text-xl font-black">90,000 <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-4xl font-black text-[#f08c6c]">180,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
                 </div>
               </div>
 
