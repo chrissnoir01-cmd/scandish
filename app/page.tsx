@@ -578,7 +578,7 @@ export default function HomePage() {
           <div className="pt-12 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">
             <p>© {new Date().getFullYear()} ScanDish Platform. All rights reserved.</p>
             <div className="flex gap-8">
-              <span>Built for Excellence</span>
+              <span><a href="https://ironiclab.site" className="hover:text-[#f08c6c]">Aproduct of Ironic Lab Co.</a></span>
             </div>
           </div>
         </div>
