@@ -6,6 +6,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import CamelliaTemplate from "@/components/premium/CamelliaTemplate";
 import SampleTemplate from "@/components/premium/SampleTemplate";
+import FreshyTemplate from "@/components/premium/FreshyTemplate";
 
 export default function PremiumRestaurantPage() {
   const params = useParams();
@@ -72,6 +73,9 @@ export default function PremiumRestaurantPage() {
 
       case "sample":
         return <SampleTemplate restaurant={restaurant} />;
+
+      case "freshy":
+        return <FreshyTemplate restaurant={restaurant} />;  
     default:
       return (
         <main className="min-h-screen flex items-center justify-center bg-black text-white">

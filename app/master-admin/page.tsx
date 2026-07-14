@@ -634,6 +634,7 @@ const updatePremiumField = async (
       <option value="default">Default Template</option>
       <option value="camellia">Camellia Template</option>
       <option value="sample">Sample Template</option>
+      <option value="freshy">Freshy Template</option>
     </select>
   </div>
 
