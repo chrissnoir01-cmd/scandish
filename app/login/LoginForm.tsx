@@ -53,7 +53,14 @@ export default function LoginForm({
 
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-      void cred.user.getIdToken().then((t) => recordSignIn(t, "portal"));
+      const token = await cred.user.getIdTokenResult();
+      // Staff who use the partner login are sent to their own portal.
+      if (token.claims.support === true) {
+        void recordSignIn(token.token, "support");
+        return router.push("/support");
+      }
+      if (token.claims.admin === true) return router.push("/master-admin");
+      void recordSignIn(token.token, "portal");
       router.push("/dashboard");
     } catch (error) {
       void recordFailedSignIn(email, "portal", (error as { code?: string })?.code ?? "unknown");

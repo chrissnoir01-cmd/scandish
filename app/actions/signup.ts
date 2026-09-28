@@ -4,6 +4,7 @@ import { logActivity } from "@/lib/server/activity";
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
 import { TERMS_VERSION } from "@/lib/brand";
 import { fail } from "@/lib/server/result";
+import { restaurantForCompany } from "@/lib/server/onboarding";
 import { ValidationError } from "@/lib/server/validate";
 import type { ActionResult } from "@/lib/types";
 
@@ -67,21 +68,7 @@ export async function claimInvite(input: {
       termsAcceptedAt: now,
       termsVersion: TERMS_VERSION,
     });
-    batch.set(db.collection("restaurants").doc(uid), {
-      ownerUid: uid,
-      ownerEmail: email,
-      companyId: company.id,
-      name: company.get("companyName") ?? "",
-      slug: company.get("slug") ?? "",
-      phone: company.get("phone") ?? "",
-      location: company.get("location") ?? "",
-      plan: company.get("plan") ?? "standard",
-      premiumEnabled: company.get("premiumEnabled") === true,
-      premiumTemplate: company.get("premiumTemplate") ?? "default",
-      status: company.get("status") ?? "inactive",
-      createdAt: now,
-      updatedAt: now,
-    });
+    batch.set(db.collection("restaurants").doc(uid), restaurantForCompany(company.id, company.data() ?? {}, uid, email, now));
     batch.update(company.ref, { ownerUid: uid });
     await batch.commit();
 

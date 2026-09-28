@@ -18,6 +18,7 @@ import type { Company, Plan, PremiumTemplate } from "../../lib/types";
 import { PoweredBy } from "@/components/auth/AuthCard";
 import ActivityPanel from "@/components/admin/ActivityPanel";
 import AccountsPanel from "@/components/admin/AccountsPanel";
+import SupportTeamPanel from "@/components/admin/SupportTeamPanel";
 
 const BRAND = "#f08c6c";
 
@@ -55,7 +56,7 @@ export default function MasterAdminPage() {
   const [renewCompany, setRenewCompany] = useState<Company | null>(null);
   const [renewDays, setRenewDays] = useState(180);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"companies" | "activity" | "accounts">("companies");
+  const [view, setView] = useState<"companies" | "activity" | "support" | "accounts">("companies");
 
   const loadCompanies = useCallback(async () => {
     const res = await listCompanies(await getIdToken());
@@ -182,6 +183,7 @@ export default function MasterAdminPage() {
             [
               ["companies", "Companies"],
               ["activity", "System activity"],
+              ["support", "Support team"],
               ["accounts", "Accounts"],
             ] as const
           ).map(([id, label]) => (
@@ -200,6 +202,7 @@ export default function MasterAdminPage() {
 
         {view === "activity" && <ActivityPanel />}
         {view === "accounts" && <AccountsPanel />}
+        {view === "support" && <SupportTeamPanel />}
 
         {view === "companies" && (
         <>
@@ -306,6 +309,12 @@ export default function MasterAdminPage() {
                         <p className="text-sm text-gray-500">Email: {company.email || "No email"}</p>
                         <p className="text-sm text-gray-500">Location: {company.location || "No location"}</p>
                         <p className="text-sm text-gray-500">Page: /r/{company.slug}</p>
+                        {company.createdByAgentName && (
+                          <p className="text-sm text-violet-700">
+                            Onboarded by {company.createdByAgentName} (support team)
+                            {!company.subscriptionEnd && company.status !== "active" && " · awaiting your activation"}
+                          </p>
+                        )}
                         <p className="text-sm text-gray-500">
                           Invite Code:{" "}
                           <span className="font-semibold text-gray-800">{company.inviteCode}</span>

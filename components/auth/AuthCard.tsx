@@ -53,6 +53,10 @@ export function PoweredBy({ className = "" }: { className?: string }) {
         <Link href="/privacy" className={link}>
           Privacy Policy
         </Link>
+        <span className="mx-2" aria-hidden>·</span>
+        <Link href="/support/login" className={link}>
+          Support Team
+        </Link>
       </p>
     </div>
   );

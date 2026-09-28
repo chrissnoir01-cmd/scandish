@@ -8,6 +8,7 @@ import { loadAnalytics, loadDashboard, saveDashboard } from "../actions/restaura
 import { GRACE_DAYS } from "../../lib/subscription";
 import type { Analytics, MenuCategory, MenuItem, Offer } from "../../lib/types";
 import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
+import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
 import {
   onAuthStateChanged,
   signOut,
@@ -235,6 +236,7 @@ export default function DashboardPage() {
   const [verifying, setVerifying] = useState(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [plan, setPlan] = useState("standard");
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // LOAD / DIRTY STATE
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -326,6 +328,7 @@ export default function DashboardPage() {
       setOffers(data.offers);
       setPlan(data.plan);
       setDaysRemaining(data.subscription?.daysRemaining ?? null);
+      setMustChangePassword(data.mustChangePassword);
       setLoadState("ready");
 
       const views = await loadAnalytics(await user.getIdToken()).catch(() => null);
@@ -681,6 +684,15 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-[#fff8f5] pb-20 text-gray-900">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      {mustChangePassword && user?.email && (
+        <FirstLoginGate
+          email={user.email}
+          onDone={() => {
+            setMustChangePassword(false);
+            triggerToast("Password saved. Welcome to ScanDish!");
+          }}
+        />
+      )}
 
       <header className="sticky top-0 z-40 border-b border-[#f4d4ca] bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">

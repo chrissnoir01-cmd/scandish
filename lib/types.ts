@@ -71,6 +71,8 @@ export interface DashboardData extends RestaurantContent {
   slug: string;
   plan: Plan;
   subscription: Subscription | null;
+  /** Account was created by a support member with a temporary password. */
+  mustChangePassword: boolean;
 }
 
 export interface Company {
@@ -94,11 +96,64 @@ export interface Company {
   plan: Plan;
   premiumEnabled: boolean;
   premiumTemplate: PremiumTemplate;
+  /** Support member who onboarded this business ("" = created by MasterAdmin). */
+  createdByAgentName: string;
+  setupFee: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type ActivityCategory = "auth" | "restaurant" | "admin" | "security";
+/* ---------- Support team ---------- */
+
+export type AgentStatus = "invited" | "active" | "suspended" | "deactivated";
+
+export interface SupportAgent {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+  status: AgentStatus;
+  /** Why the member was suspended/deactivated — shown to them in their portal. */
+  statusReason: string;
+  /** ISO date a suspension ends automatically; "" = until lifted by MasterAdmin. */
+  suspendedUntil: string;
+  inviteCode: string;
+  inviteUsed: boolean;
+  uid: string;
+  agreementVersion: string;
+  agreementAcceptedAt: string;
+  createdAt: string;
+  businesses: number;
+  liveBusinesses: number;
+  setupEarnings: number;
+}
+
+export type OnboardingState = "awaiting_activation" | "live" | "offline";
+
+/** A business as its support member sees it. */
+export interface AgentBusiness {
+  id: string;
+  companyName: string;
+  managerName: string;
+  email: string;
+  phone: string;
+  location: string;
+  plan: Plan;
+  slug: string;
+  state: OnboardingState;
+  managerHasLoggedIn: boolean;
+  passwordChanged: boolean;
+  setupFee: number;
+  createdAt: string;
+}
+
+export interface SupportPortal {
+  agent: SupportAgent;
+  businesses: AgentBusiness[];
+}
+
+export type ActivityCategory = "auth" | "restaurant" | "admin" | "security" | "support";
 
 export type ActivityType =
   | "auth.login"
@@ -113,6 +168,15 @@ export type ActivityType =
   | "admin.renewed"
   | "admin.premium_changed"
   | "admin.company_deleted"
+  | "admin.support_created"
+  | "admin.support_suspended"
+  | "admin.support_deactivated"
+  | "admin.support_reactivated"
+  | "support.signup"
+  | "support.login"
+  | "support.business_created"
+  | "support.password_reissued"
+  | "restaurant.password_set"
   | "security.unauthorized";
 
 export interface ActivityEvent {
@@ -133,7 +197,7 @@ export interface ActivityEvent {
 export interface AccountSummary {
   uid: string;
   email: string;
-  role: "admin" | "restaurant" | "unknown";
+  role: "admin" | "support" | "restaurant" | "unknown";
   restaurantName: string;
   slug: string;
   emailVerified: boolean;

@@ -84,6 +84,11 @@ export default function LegalPage({
         <p className="mt-1">
           Questions? <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold text-[#f08c6c]">{BRAND.supportEmail}</a>
         </p>
+        <p className="mt-3 space-x-4">
+          <Link href="/terms" className="hover:text-[#f08c6c]">Terms of Service</Link>
+          <Link href="/privacy" className="hover:text-[#f08c6c]">Privacy Policy</Link>
+          <Link href="/support/login" className="hover:text-[#f08c6c]">Support Team</Link>
+        </p>
       </footer>
     </main>
   );

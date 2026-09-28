@@ -17,6 +17,15 @@ const CATEGORY: Record<ActivityType, ActivityCategory> = {
   "admin.renewed": "admin",
   "admin.premium_changed": "admin",
   "admin.company_deleted": "admin",
+  "admin.support_created": "admin",
+  "admin.support_suspended": "admin",
+  "admin.support_deactivated": "admin",
+  "admin.support_reactivated": "admin",
+  "support.signup": "support",
+  "support.login": "support",
+  "support.business_created": "support",
+  "support.password_reissued": "support",
+  "restaurant.password_set": "restaurant",
   "security.unauthorized": "security",
 };
 

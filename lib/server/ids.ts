@@ -2,13 +2,20 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { adminDb } from "./firebase-admin";
 
-// No 0/O/1/I to avoid misreading codes over the phone.
+// No 0/O/1/I/l to avoid misreading codes over the phone.
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const LOWER = "abcdefghjkmnpqrstuvwxyz";
 
-export function generateInviteCode(): string {
-  let code = "";
-  for (let i = 0; i < 10; i++) code += ALPHABET[randomInt(ALPHABET.length)];
-  return `SD-${code.slice(0, 5)}-${code.slice(5)}`;
+const pick = (chars: string, n: number) => Array.from({ length: n }, () => chars[randomInt(chars.length)]).join("");
+
+export function generateInviteCode(prefix = "SD"): string {
+  const code = pick(ALPHABET, 10);
+  return `${prefix}-${code.slice(0, 5)}-${code.slice(5)}`;
+}
+
+/** Easy to read aloud and type on a phone, ~70 bits of entropy. Never stored. */
+export function generateTempPassword(): string {
+  return `${pick(ALPHABET, 4)}-${pick(LOWER, 4)}-${pick("23456789", 4)}`;
 }
 
 export function slugify(name: string): string {

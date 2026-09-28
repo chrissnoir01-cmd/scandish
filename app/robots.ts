@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/dashboard", "/master-admin", "/api/", "/auth/", "/forgot-password"],
+      disallow: ["/dashboard", "/master-admin", "/api/", "/auth/", "/forgot-password", "/support"],
     },
     sitemap: "https://scandish.online/sitemap.xml",
     host: "https://scandish.online",

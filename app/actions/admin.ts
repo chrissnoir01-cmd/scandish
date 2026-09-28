@@ -7,6 +7,7 @@ import { generateInviteCode, uniqueSlug } from "@/lib/server/ids";
 import { fail } from "@/lib/server/result";
 import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { ValidationError, validateString as str } from "@/lib/server/validate";
+import { agentsCol, businessesForAgent, statsFor, toAgent } from "@/lib/server/support";
 import type {
   AccountSummary,
   ActionResult,
@@ -15,6 +16,7 @@ import type {
   CompanyStatus,
   Plan,
   PremiumTemplate,
+  SupportAgent,
 } from "@/lib/types";
 
 const PLANS: Plan[] = ["standard", "premium"];
@@ -49,6 +51,8 @@ function toCompany(id: string, d: Record<string, unknown>): Company {
     premiumTemplate: TEMPLATES.includes(d.premiumTemplate as PremiumTemplate)
       ? (d.premiumTemplate as PremiumTemplate)
       : "default",
+    createdByAgentName: s("createdByAgentName"),
+    setupFee: typeof d.setupFee === "number" ? d.setupFee : 0,
     createdAt: s("createdAt"),
     updatedAt: s("updatedAt"),
   };
@@ -308,7 +312,14 @@ export async function listAccounts(idToken: string): Promise<ActionResult<Accoun
       const page = await adminAuth().listUsers(1000, pageToken);
       for (const u of page.users) {
         const place = places.get(u.uid);
-        const role = u.customClaims?.admin === true ? "admin" : roles.get(u.uid) === "restaurant" || place ? "restaurant" : "unknown";
+        const role =
+          u.customClaims?.admin === true
+            ? "admin"
+            : u.customClaims?.support === true
+              ? "support"
+              : roles.get(u.uid) === "restaurant" || place
+                ? "restaurant"
+                : "unknown";
         const iso = (t?: string | null) => (t ? new Date(t).toISOString() : "");
         accounts.push({
           uid: u.uid,
@@ -331,5 +342,122 @@ export async function listAccounts(idToken: string): Promise<ActionResult<Accoun
     return { ok: true, data: accounts };
   } catch (err) {
     return fail(err, "Could not load accounts");
+  }
+}
+
+/* ---------- Support team ---------- */
+
+export async function createSupportAgent(
+  idToken: string,
+  input: { name: string; email: string; phone: string; notes: string }
+): Promise<ActionResult<{ inviteCode: string }>> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const name = str(input.name, 120, "Name");
+    const email = str(input.email, 200, "Email").toLowerCase();
+    const phone = str(input.phone, 40, "Phone");
+    if (!name || !phone) throw new ValidationError("Name and phone are required");
+    if (!EMAIL.test(email)) throw new ValidationError("A valid email is required — the member signs up with it");
+
+    const existing = await agentsCol().where("email", "==", email).limit(1).get();
+    if (!existing.empty) throw new ValidationError("A support member with this email already exists");
+
+    const inviteCode = generateInviteCode("ST");
+    const ref = await agentsCol().add({
+      name,
+      email,
+      phone,
+      notes: str(input.notes, 2000, "Notes"),
+      status: "invited",
+      statusReason: "",
+      suspendedUntil: "",
+      inviteCode,
+      inviteUsed: false,
+      uid: "",
+      agreementVersion: "",
+      agreementAcceptedAt: "",
+      createdAt: now(),
+      updatedAt: now(),
+    });
+
+    await logActivity({
+      type: "admin.support_created",
+      message: `Invited ${name} (${email}) to the support team`,
+      actor: adminActor(admin),
+      target: { kind: "account", id: ref.id, name },
+    });
+    return { ok: true, data: { inviteCode } };
+  } catch (err) {
+    return fail(err, "Could not create the support member");
+  }
+}
+
+export async function listSupportAgents(idToken: string): Promise<ActionResult<SupportAgent[]>> {
+  try {
+    await requireAdmin(idToken);
+    const snap = await agentsCol().get();
+    const list = await Promise.all(
+      snap.docs.map(async (d) => toAgent(d.id, d.data(), statsFor(await businessesForAgent(d.id))))
+    );
+    list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return { ok: true, data: list };
+  } catch (err) {
+    return fail(err, "Could not load the support team");
+  }
+}
+
+/**
+ * suspend: temporary; the member can still open their portal to read the notice and agreement.
+ * deactivate: sign-in is blocked entirely. reactivate: undoes either.
+ */
+export async function setSupportAgentStatus(
+  idToken: string,
+  id: string,
+  change: { action: "suspend" | "deactivate" | "reactivate"; reason?: string; until?: string }
+): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const ref = agentsCol().doc(String(id));
+    const snap = await ref.get();
+    if (!snap.exists) throw new ValidationError("Support member not found");
+    const name = snap.get("name") ?? "";
+    const uid: string = snap.get("uid") ?? "";
+
+    const reason = str(change.reason, 1000, "Reason");
+    if (change.action !== "reactivate" && !reason) {
+      throw new ValidationError("Give a reason — the member will see it in their portal");
+    }
+    let until = "";
+    if (change.action === "suspend" && change.until) {
+      const d = new Date(change.until);
+      if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) throw new ValidationError("The end date must be in the future");
+      until = d.toISOString();
+    }
+
+    const status = change.action === "suspend" ? "suspended" : change.action === "deactivate" ? "deactivated" : (uid ? "active" : "invited");
+    await ref.update({
+      status,
+      statusReason: change.action === "reactivate" ? "" : reason,
+      suspendedUntil: until,
+      statusChangedAt: now(),
+      updatedAt: now(),
+    });
+
+    if (uid) {
+      await adminAuth().updateUser(uid, { disabled: change.action === "deactivate" });
+      if (change.action === "deactivate") await adminAuth().revokeRefreshTokens(uid);
+    }
+
+    const type = change.action === "suspend" ? "admin.support_suspended" : change.action === "deactivate" ? "admin.support_deactivated" : "admin.support_reactivated";
+    const detail = change.action === "suspend" ? `until ${until ? until.slice(0, 10) : "further notice"}` : "";
+    await logActivity({
+      type,
+      message: `${change.action === "suspend" ? "Suspended" : change.action === "deactivate" ? "Deactivated" : "Reactivated"} support member ${name}${detail ? ` ${detail}` : ""}${reason ? ` — ${reason}` : ""}`,
+      actor: adminActor(admin),
+      target: { kind: "account", id: ref.id, name },
+    });
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return fail(err, "Could not update the support member");
   }
 }

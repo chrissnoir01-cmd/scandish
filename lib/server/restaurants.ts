@@ -151,7 +151,14 @@ export async function getDashboardData(uid: string): Promise<DashboardData | nul
     }
   }
 
-  return { ...toContent(data), slug: s(data.slug), plan: toPlan(data.plan), subscription };
+  const owner = await db.collection("users").doc(uid).get();
+  return {
+    ...toContent(data),
+    slug: s(data.slug),
+    plan: toPlan(data.plan),
+    subscription,
+    mustChangePassword: owner.get("mustChangePassword") === true,
+  };
 }
 
 const SECTION_LABELS: Record<keyof RestaurantContent, string> = {

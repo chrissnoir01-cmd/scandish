@@ -569,6 +569,7 @@ export default function LandingPage() {
               <ul className="space-y-4 text-sm font-bold text-gray-500">
                 <li><Link href="/privacy" className="hover:text-[#f08c6c]">Privacy Policy</Link></li>
                 <li><Link href="/terms" className="hover:text-[#f08c6c]">Terms of Service</Link></li>
+                <li><Link href="/support/login" className="hover:text-[#f08c6c]">Support Team</Link></li>
               </ul>
             </div>
           </div>

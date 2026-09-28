@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
+  Headset,
+  KeyRound,
   LogIn,
   Monitor,
   RefreshCw,
@@ -25,6 +27,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "auth", label: "Sign-ins & signups" },
   { id: "restaurant", label: "Restaurants" },
   { id: "admin", label: "Admin actions" },
+  { id: "support", label: "Support team" },
   { id: "security", label: "Security" },
 ];
 
@@ -41,6 +44,15 @@ const ICONS: Record<ActivityType, LucideIcon> = {
   "admin.renewed": Building2,
   "admin.premium_changed": Building2,
   "admin.company_deleted": Building2,
+  "admin.support_created": Headset,
+  "admin.support_suspended": Headset,
+  "admin.support_deactivated": Headset,
+  "admin.support_reactivated": Headset,
+  "support.signup": UserPlus,
+  "support.login": LogIn,
+  "support.business_created": Headset,
+  "support.password_reissued": KeyRound,
+  "restaurant.password_set": KeyRound,
   "security.unauthorized": ShieldAlert,
 };
 
@@ -48,6 +60,7 @@ const TONE: Record<ActivityCategory, string> = {
   auth: "bg-blue-50 text-blue-700",
   restaurant: "bg-[#fff1ec] text-[#c2553a]",
   admin: "bg-gray-100 text-gray-700",
+  support: "bg-violet-50 text-violet-700",
   security: "bg-red-50 text-red-700",
 };
 

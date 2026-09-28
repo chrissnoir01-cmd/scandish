@@ -13,6 +13,7 @@ const when = (iso: string) =>
 
 const ROLE_STYLE: Record<AccountSummary["role"], string> = {
   admin: "bg-gray-900 text-white",
+  support: "bg-violet-50 text-violet-700",
   restaurant: "bg-[#fff1ec] text-[#c2553a]",
   unknown: "bg-gray-100 text-gray-500",
 };
