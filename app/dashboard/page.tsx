@@ -1293,7 +1293,10 @@ export default function DashboardPage() {
       )}
 
       <footer className="border-t border-[#f4d4ca] bg-white py-10 mt-12 text-center text-[10px] font-black uppercase tracking-widest text-gray-300">
-        ScanDish Rwanda © 2026 • Professional QR Menu Solutions
+        ScanDish © {new Date().getFullYear()} • Professional QR Menu Solutions •{" "}
+        <a href="https://ironiclab.site" target="_blank" rel="noreferrer" className="hover:text-[#f08c6c]">
+          A product of Ironic Lab Inc.
+        </a>
       </footer>
     </main>
   );

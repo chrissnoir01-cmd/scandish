@@ -4,6 +4,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://scandish.online"),
   // Canonical URLs are set per page; a layout-level one would mark every page as a homepage duplicate.
+  applicationName: "ScanDish",
+  authors: [{ name: "Ironic Lab Inc.", url: "https://ironiclab.site" }],
+  creator: "Ironic Lab Inc.",
+  publisher: "Ironic Lab Inc.",
   title: {
     default: "ScanDish | Smart QR Menu Platform for Restaurants",
     template: "%s | ScanDish",
@@ -62,7 +66,12 @@ export default function RootLayout({
     url: "https://scandish.online",
     logo: "https://scandish.online/images/logo.jpg",
     description:
-      "ScanDish is a smart QR menu platform for restaurants in Africa.",
+      "ScanDish is a smart QR menu platform for restaurants in Africa, built and operated by Ironic Lab Inc.",
+    parentOrganization: {
+      "@type": "Organization",
+      name: "Ironic Lab Inc.",
+      url: "https://ironiclab.site",
+    },
     email: "support@scandish.online",
     telephone: "+250781822350",
     foundingLocation: {
@@ -109,6 +118,7 @@ export default function RootLayout({
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     url: "https://scandish.online",
+    creator: { "@type": "Organization", name: "Ironic Lab Inc.", url: "https://ironiclab.site" },
     logo: "https://scandish.online/images/logo.jpg",
     description:
       "ScanDish helps restaurants create smart QR-powered digital menu pages with menu management, gallery, offers, contact links, and map directions.",

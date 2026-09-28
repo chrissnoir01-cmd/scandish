@@ -6,6 +6,7 @@ import { auth } from "../../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { claimInvite } from "../actions/signup";
 import Link from "next/link";
+import { PoweredBy } from "@/components/auth/AuthCard";
 
 const BRAND = "#f08c6c";
 
@@ -112,6 +113,7 @@ export default function CompanySignupPage() {
             Login
           </Link>
         </p>
+        <PoweredBy className="mt-6" />
       </div>
 
       <style jsx>{`

@@ -15,6 +15,7 @@ import {
 } from "../actions/admin";
 import { daysRemaining as getDaysRemaining } from "../../lib/subscription";
 import type { Company, Plan, PremiumTemplate } from "../../lib/types";
+import { PoweredBy } from "@/components/auth/AuthCard";
 
 const BRAND = "#f08c6c";
 
@@ -380,6 +381,8 @@ export default function MasterAdminPage() {
             </div>
           </div>
         </section>
+
+        <PoweredBy className="mt-10" />
       </div>
 
       <style jsx>{`
