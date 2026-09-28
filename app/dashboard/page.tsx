@@ -237,6 +237,8 @@ export default function DashboardPage() {
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [plan, setPlan] = useState("standard");
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [trialEndsAt, setTrialEndsAt] = useState("");
+  const [awaitingSubscription, setAwaitingSubscription] = useState(false);
 
   // LOAD / DIRTY STATE
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -329,6 +331,8 @@ export default function DashboardPage() {
       setPlan(data.plan);
       setDaysRemaining(data.subscription?.daysRemaining ?? null);
       setMustChangePassword(data.mustChangePassword);
+      setTrialEndsAt(data.subscription?.trialEndsAt ?? "");
+      setAwaitingSubscription(!!data.subscription && !data.subscription.subscriptionEnd && !data.subscription.trialEndsAt);
       setLoadState("ready");
 
       const views = await loadAnalytics(await user.getIdToken()).catch(() => null);
@@ -720,6 +724,30 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
+
+      {(trialEndsAt || awaitingSubscription) && (
+        <div className="mx-auto mt-6 max-w-7xl px-4 md:px-6">
+          <div className={`flex items-center gap-4 rounded-3xl border p-5 ${trialEndsAt ? "border-sky-200 bg-sky-50 text-sky-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+            <Clock className="shrink-0" />
+            <div>
+              <p className="font-bold">{trialEndsAt ? "Setup period" : "Waiting for subscription"}</p>
+              <p className="text-sm">
+                {trialEndsAt
+                  ? `Your page is live until ${new Date(trialEndsAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" })} so you can check how it looks. Pay your subscription to ScanDish to keep it online.`
+                  : "Your page is offline until ScanDish confirms your subscription payment. You can keep preparing your menu here."}
+              </p>
+            </div>
+            <a
+              href={`${SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hello ScanDish, I would like to confirm the subscription for ${name}.`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto hidden shrink-0 rounded-2xl bg-white px-4 py-2 text-sm font-bold shadow-sm sm:block"
+            >
+              Confirm subscription
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* SUBSCRIPTION WARNINGS */}
       {daysRemaining !== null && (

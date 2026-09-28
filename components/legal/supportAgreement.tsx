@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { BRAND, SETUP_FEES, formatRwf } from "@/lib/brand";
+import { BRAND, formatRwf } from "@/lib/brand";
+import { agentEarning, type Pricing } from "@/lib/settings";
 import type { LegalSection } from "./LegalPage";
 
 const email = <a href={`mailto:${BRAND.supportEmail}`}>{BRAND.supportEmail}</a>;
 
+const pct = (n: number) => `${Number(n.toFixed(2))}%`;
+
 /** The Support Team Agreement every support member accepts at signup. Shown publicly and in the portal. */
-export const supportAgreementSections: LegalSection[] = [
+export const supportAgreementSections = (pricing: Pricing): LegalSection[] => [
   {
     id: "parties",
     title: "The parties and your role",
@@ -47,19 +50,36 @@ export const supportAgreementSections: LegalSection[] = [
     body: (
       <>
         <p>
-          Your <strong>only</strong> compensation is the one-time <strong>setup fee</strong> paid by each business you
-          onboard, which you collect directly from that business and keep for yourself. Current setup fees are{" "}
-          <strong>{formatRwf(SETUP_FEES.standard)}</strong> for the Standard plan and{" "}
-          <strong>{formatRwf(SETUP_FEES.premium)}</strong> for the Premium plan, as shown on the ScanDish pricing page.
+          Your <strong>only</strong> compensation is your share of the one-time <strong>setup fee</strong> paid by each
+          business you onboard. You collect the setup fee from the business. At the current prices:
+        </p>
+        <ul>
+          <li>
+            <strong>Standard plan</strong> — setup fee {formatRwf(pricing.standard.setupFee)}: you keep{" "}
+            <strong>{pct(pricing.standard.agentSharePct)}</strong> ({formatRwf(agentEarning(pricing, "standard"))}).
+          </li>
+          <li>
+            <strong>Premium plan</strong> — setup fee {formatRwf(pricing.premium.setupFee)}: you keep{" "}
+            <strong>{pct(pricing.premium.agentSharePct)}</strong> ({formatRwf(agentEarning(pricing, "premium"))}) and pass
+            the remaining {formatRwf(pricing.premium.setupFee - agentEarning(pricing, "premium"))} to Ironic Lab.
+          </li>
+        </ul>
+        <p>
+          Prices and shares are set by Ironic Lab and may change; your portal always shows the current figures. The
+          amounts for each business are fixed at the moment you create it.
         </p>
         <ul>
           <li>Ironic Lab pays you <strong>no salary, commission, bonus or any other amount</strong>.</li>
           <li>Charge only the published setup fee — never more — and give the business a receipt.</li>
+          <li>Any part of a setup fee that belongs to Ironic Lab must be handed over within 7 days of collecting it.</li>
           <li>
             Subscription fees (6-month or 1-year plans) belong to Ironic Lab and are paid through ScanDish&apos;s official
             payment channels. You must not collect subscription money unless Ironic Lab authorises it in writing.
           </li>
-          <li>A business&apos;s page goes live only after ScanDish activates its subscription.</li>
+          <li>
+            A business you create is live for a <strong>{pricing.trialDays}-day setup period</strong> so it can check its
+            page. It stays online after that only once Ironic Lab confirms its subscription payment.
+          </li>
         </ul>
       </>
     ),

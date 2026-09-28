@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
+  FileText,
   Headset,
+  Settings,
   KeyRound,
   LogIn,
   Monitor,
@@ -53,6 +55,8 @@ const ICONS: Record<ActivityType, LucideIcon> = {
   "support.business_created": Headset,
   "support.password_reissued": KeyRound,
   "restaurant.password_set": KeyRound,
+  "contract.generated": FileText,
+  "admin.settings_changed": Settings,
   "security.unauthorized": ShieldAlert,
 };
 

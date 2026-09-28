@@ -22,6 +22,21 @@ export async function getIdToken(): Promise<string> {
   return user.getIdToken();
 }
 
+/** Admin only: stores the contract stamp/signature privately and returns its id (never a public URL). */
+export async function uploadPrivateAsset(file: File, purpose: "contract-stamp" | "contract-signature"): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("purpose", purpose);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await getIdToken()}` },
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Upload failed");
+  return data.id as string;
+}
+
 export async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);

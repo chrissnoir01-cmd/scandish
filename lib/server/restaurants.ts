@@ -1,7 +1,7 @@
 import "server-only";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { adminDb } from "./firebase-admin";
-import { daysRemaining, isPubliclyVisible } from "../subscription";
+import { daysRemaining, inTrial, isPubliclyVisible } from "../subscription";
 import type {
   CompanyStatus,
   DashboardData,
@@ -91,7 +91,7 @@ async function loadPublicRestaurant(slug: string): Promise<PublicRestaurant | nu
 
   const company = await db.collection("companies").doc(companyId).get();
   const c = company.data();
-  if (!isPubliclyVisible({ status: c?.status as CompanyStatus, subscriptionEnd: s(c?.subscriptionEnd) })) {
+  if (!isPubliclyVisible({ status: c?.status as CompanyStatus, subscriptionEnd: s(c?.subscriptionEnd), trialEndsAt: s(c?.trialEndsAt) })) {
     return null;
   }
 
@@ -120,11 +120,13 @@ export async function listPublicSlugs(): Promise<string[]> {
   const db = adminDb();
   const [restaurants, companies] = await Promise.all([
     db.collection("restaurants").select("slug", "companyId").get(),
-    db.collection("companies").select("status", "subscriptionEnd").get(),
+    db.collection("companies").select("status", "subscriptionEnd", "trialEndsAt").get(),
   ]);
   const visible = new Set(
     companies.docs
-      .filter((c) => isPubliclyVisible({ status: c.get("status"), subscriptionEnd: c.get("subscriptionEnd") }))
+      .filter((c) =>
+        isPubliclyVisible({ status: c.get("status"), subscriptionEnd: c.get("subscriptionEnd"), trialEndsAt: c.get("trialEndsAt") })
+      )
       .map((c) => c.id)
   );
   return restaurants.docs
@@ -143,10 +145,12 @@ export async function getDashboardData(uid: string): Promise<DashboardData | nul
   if (companyId) {
     const c = (await db.collection("companies").doc(companyId).get()).data();
     if (c) {
+      const trial = { subscriptionEnd: s(c.subscriptionEnd), trialEndsAt: s(c.trialEndsAt) };
       subscription = {
         status: c.status === "active" ? "active" : "inactive",
         subscriptionEnd: s(c.subscriptionEnd),
         daysRemaining: daysRemaining(s(c.subscriptionEnd)),
+        trialEndsAt: inTrial(trial) ? trial.trialEndsAt : "",
       };
     }
   }

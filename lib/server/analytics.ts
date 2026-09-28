@@ -35,7 +35,9 @@ function visibleRestaurantId(slug: string): Promise<string | null> {
       const companyId = snap.docs[0].get("companyId");
       if (!companyId) return null;
       const c = (await db.collection("companies").doc(companyId).get()).data();
-      return isPubliclyVisible({ status: c?.status, subscriptionEnd: c?.subscriptionEnd }) ? snap.docs[0].id : null;
+      return isPubliclyVisible({ status: c?.status, subscriptionEnd: c?.subscriptionEnd, trialEndsAt: c?.trialEndsAt })
+        ? snap.docs[0].id
+        : null;
     },
     ["restaurant-id", slug],
     { tags: [restaurantTag(slug)], revalidate: 3600 }

@@ -8,6 +8,9 @@ import { fail } from "@/lib/server/result";
 import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { ValidationError, validateString as str } from "@/lib/server/validate";
 import { agentsCol, businessesForAgent, statsFor, toAgent } from "@/lib/server/support";
+import { getContractTemplate, getPricingFresh, saveContractTemplate, savePricing } from "@/lib/server/settings";
+import type { ContractTemplate, PlanPricing, Pricing } from "@/lib/settings";
+import { inTrial } from "@/lib/subscription";
 import type {
   AccountSummary,
   ActionResult,
@@ -53,6 +56,9 @@ function toCompany(id: string, d: Record<string, unknown>): Company {
       : "default",
     createdByAgentName: s("createdByAgentName"),
     setupFee: typeof d.setupFee === "number" ? d.setupFee : 0,
+    agentEarning: typeof d.agentEarning === "number" ? d.agentEarning : typeof d.setupFee === "number" ? d.setupFee : 0,
+    trialEndsAt: s("trialEndsAt"),
+    trialActive: inTrial({ subscriptionEnd: s("subscriptionEnd"), trialEndsAt: s("trialEndsAt") }),
     createdAt: s("createdAt"),
     updatedAt: s("updatedAt"),
   };
@@ -459,5 +465,120 @@ export async function setSupportAgentStatus(
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Could not update the support member");
+  }
+}
+
+/* ---------- Settings: pricing & contract template ---------- */
+
+export interface AdminSettings {
+  pricing: Pricing;
+  contract: Omit<ContractTemplate, "stampId" | "signatureId"> & { hasStamp: boolean; hasSignature: boolean };
+}
+
+export async function getSettings(idToken: string): Promise<ActionResult<AdminSettings>> {
+  try {
+    await requireAdmin(idToken);
+    const [pricing, contract] = await Promise.all([getPricingFresh(), getContractTemplate()]);
+    const { stampId, signatureId, ...rest } = contract;
+    return { ok: true, data: { pricing, contract: { ...rest, hasStamp: !!stampId, hasSignature: !!signatureId } } };
+  } catch (err) {
+    return fail(err, "Could not load settings");
+  }
+}
+
+function money(v: unknown, label: string): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 100_000_000) throw new ValidationError(`${label} must be a valid amount`);
+  return Math.round(n);
+}
+
+function planInput(v: unknown, label: string): PlanPricing {
+  const p = (v ?? {}) as Record<string, unknown>;
+  const pct = Number(p.agentSharePct);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new ValidationError(`${label}: member share must be 0–100%`);
+  return {
+    setupFee: money(p.setupFee, `${label} setup fee`),
+    sixMonths: money(p.sixMonths, `${label} 6-month price`),
+    year: money(p.year, `${label} 1-year price`),
+    agentSharePct: Math.round(pct * 100) / 100,
+  };
+}
+
+export async function updatePricing(idToken: string, input: Omit<Pricing, "updatedAt">): Promise<ActionResult<Pricing>> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const trialDays = Number(input.trialDays);
+    if (!Number.isInteger(trialDays) || trialDays < 0 || trialDays > 60) throw new ValidationError("Setup period must be 0–60 days");
+    const before = await getPricingFresh();
+    const saved = await savePricing({
+      standard: planInput(input.standard, "Standard"),
+      premium: planInput(input.premium, "Premium"),
+      trialDays,
+    });
+
+    const changes: string[] = [];
+    for (const plan of ["standard", "premium"] as const) {
+      for (const k of ["setupFee", "sixMonths", "year", "agentSharePct"] as const) {
+        if (before[plan][k] !== saved[plan][k]) changes.push(`${plan} ${k} ${before[plan][k]} → ${saved[plan][k]}`);
+      }
+    }
+    if (before.trialDays !== saved.trialDays) changes.push(`setup period ${before.trialDays} → ${saved.trialDays} days`);
+
+    await logActivity({
+      type: "admin.settings_changed",
+      message: `Updated pricing${changes.length ? `: ${changes.join("; ")}` : " (no changes)"}`,
+      actor: adminActor(admin),
+    });
+    return { ok: true, data: saved };
+  } catch (err) {
+    return fail(err, "Could not save pricing");
+  }
+}
+
+export async function updateContractTemplate(
+  idToken: string,
+  input: {
+    title: string;
+    body: string;
+    signatoryName: string;
+    signatoryTitle: string;
+    /** New private asset ids from /api/upload, or "remove". Omit to keep the current one. */
+    stampId?: string;
+    signatureId?: string;
+  }
+): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const title = str(input.title, 150, "Title");
+    const body = str(input.body, 30000, "Contract text");
+    if (!title || !body) throw new ValidationError("Title and contract text are required");
+
+    const asset = (v: string | undefined, label: string) => {
+      if (v === undefined) return undefined;
+      if (v === "remove") return "";
+      if (!/^scandish\/admin\/contract\/[\w-]+$/.test(v)) throw new ValidationError(`Invalid ${label} upload`);
+      return v;
+    };
+    const stampId = asset(input.stampId, "stamp");
+    const signatureId = asset(input.signatureId, "signature");
+
+    await saveContractTemplate({
+      title,
+      body,
+      signatoryName: str(input.signatoryName, 120, "Signatory name"),
+      signatoryTitle: str(input.signatoryTitle, 120, "Signatory title"),
+      ...(stampId !== undefined ? { stampId } : {}),
+      ...(signatureId !== undefined ? { signatureId } : {}),
+    });
+
+    const assets = [stampId !== undefined && (stampId ? "new stamp" : "stamp removed"), signatureId !== undefined && (signatureId ? "new signature" : "signature removed")].filter(Boolean);
+    await logActivity({
+      type: "admin.settings_changed",
+      message: `Updated the service contract template${assets.length ? ` (${assets.join(", ")})` : ""}`,
+      actor: adminActor(admin),
+    });
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return fail(err, "Could not save the contract template");
   }
 }

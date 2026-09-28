@@ -25,10 +25,13 @@ import {
   MessagesSquare
 } from 'lucide-react';
 import { FaInstagram, FaFacebook, FaTiktok, FaXTwitter } from "react-icons/fa6";
+import type { Pricing } from "@/lib/settings";
 
 const BRAND_COLOR = "#f08c6c";
 
-export default function LandingPage() {
+const n = (v: number) => v.toLocaleString("en-US");
+
+export default function LandingPage({ pricing }: { pricing: Pricing }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [scrolled, setScrolled] = useState(false);
@@ -271,15 +274,15 @@ export default function LandingPage() {
 
               <div className="space-y-4 mb-10">
                 <div className="flex flex-col">
-                  <span className="text-3xl font-black">20,000 <span className="text-sm text-gray-400">RWF</span></span>
+                  <span className="text-3xl font-black">{n(pricing.standard.setupFee)} <span className="text-sm text-gray-400">RWF</span></span>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
                 </div>
                 <div className="h-px bg-gray-50 w-full" />
                 <div className="flex flex-col">
-                  <span className="text-xl font-black">72,000 <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
+                  <span className="text-xl font-black">{n(pricing.standard.sixMonths)} <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-black">144,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                  <span className="text-xl font-black">{n(pricing.standard.year)} <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
                 </div>
               </div>
 
@@ -307,15 +310,15 @@ export default function LandingPage() {
 
               <div className="space-y-4 mb-10">
                 <div className="flex flex-col">
-                  <span className="text-3xl font-black">80,000 <span className="text-sm text-gray-400">RWF</span></span>
+                  <span className="text-3xl font-black">{n(pricing.premium.setupFee)} <span className="text-sm text-gray-400">RWF</span></span>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
                 </div>
                 <div className="h-px bg-gray-50 w-full" />
                 <div className="flex flex-col">
-                  <span className="text-xl font-black">90,000 <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
+                  <span className="text-xl font-black">{n(pricing.premium.sixMonths)} <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-4xl font-black text-[#f08c6c]">180,000 <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
+                  <span className="text-4xl font-black text-[#f08c6c]">{n(pricing.premium.year)} <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
                 </div>
               </div>
 

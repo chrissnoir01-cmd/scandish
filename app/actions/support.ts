@@ -1,6 +1,9 @@
 "use server";
 
-import { AGREEMENT_VERSION, MIN_PASSWORD_LENGTH, SETUP_FEES } from "@/lib/brand";
+import { AGREEMENT_VERSION, MIN_PASSWORD_LENGTH } from "@/lib/brand";
+import { agentEarning } from "@/lib/settings";
+import { getPricing, getPricingFresh } from "@/lib/server/settings";
+import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { logActivity } from "@/lib/server/activity";
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
 import { generateTempPassword, uniqueSlug } from "@/lib/server/ids";
@@ -92,8 +95,8 @@ export async function claimSupportInvite(input: {
 export async function loadSupportPortal(idToken: string): Promise<ActionResult<SupportPortal>> {
   try {
     const { ref, data } = await requireSupport(idToken, { allowSuspended: true });
-    const businesses = await businessesForAgent(ref.id);
-    return { ok: true, data: { agent: toAgent(ref.id, data, statsFor(businesses)), businesses } };
+    const [businesses, pricing] = await Promise.all([businessesForAgent(ref.id), getPricing()]);
+    return { ok: true, data: { agent: toAgent(ref.id, data, statsFor(businesses)), businesses, pricing } };
   } catch (err) {
     return fail(err, "Could not load your portal");
   }
@@ -117,7 +120,7 @@ export interface NewBusinessInput {
 export async function createBusiness(
   idToken: string,
   input: NewBusinessInput
-): Promise<ActionResult<{ tempPassword: string; email: string; slug: string }>> {
+): Promise<ActionResult<{ tempPassword: string; email: string; slug: string; companyId: string }>> {
   try {
     const { user, ref, data: agent } = await requireSupport(idToken);
 
@@ -135,7 +138,12 @@ export async function createBusiness(
 
     const slug = await uniqueSlug(companyName);
     const tempPassword = generateTempPassword();
+    const pricing = await getPricingFresh();
+    const setupFee = pricing[plan].setupFee;
+    const earning = agentEarning(pricing, plan);
     const now = new Date().toISOString();
+    // Live immediately for the setup period; offline afterwards unless MasterAdmin confirms the subscription.
+    const trialEndsAt = new Date(Date.now() + pricing.trialDays * 86_400_000).toISOString();
     const companyRef = db.collection("companies").doc();
     const company = {
       companyName,
@@ -149,14 +157,17 @@ export async function createBusiness(
       certificateUrl: "",
       subscriptionStart: "",
       subscriptionEnd: "",
-      status: "inactive",
+      trialEndsAt,
+      status: "active",
       inviteCode: "",
       inviteUsed: true,
       slug,
       plan,
       premiumEnabled: false,
       premiumTemplate: "default",
-      setupFee: SETUP_FEES[plan],
+      setupFee,
+      agentEarning: earning,
+      agentSharePct: pricing[plan].agentSharePct,
       createdByAgentId: ref.id,
       createdByAgentName: agent.name ?? "",
       createdAt: now,
@@ -192,12 +203,13 @@ export async function createBusiness(
 
     await logActivity({
       type: "support.business_created",
-      message: `${agent.name} created ${companyName} (${plan}) for ${managerName} <${email}> — awaiting activation`,
+      message: `${agent.name} created ${companyName} (${plan}) for ${managerName} <${email}> — live for ${pricing.trialDays}-day setup period`,
       actor: { uid: user.uid, email: user.email },
       target: { kind: "company", id: companyRef.id, name: companyName },
-      meta: { plan, setupFee: SETUP_FEES[plan], slug },
+      meta: { plan, setupFee, agentEarning: earning, slug, trialEndsAt },
     });
-    return { ok: true, data: { tempPassword, email, slug } };
+    revalidateRestaurant(slug);
+    return { ok: true, data: { tempPassword, email, slug, companyId: companyRef.id } };
   } catch (err) {
     return fail(err, "Could not create the business");
   }

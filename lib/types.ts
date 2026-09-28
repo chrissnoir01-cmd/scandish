@@ -64,6 +64,8 @@ export interface Subscription {
   status: CompanyStatus;
   subscriptionEnd: string;
   daysRemaining: number | null;
+  /** Set while a support-created business is in its setup period (live until then). */
+  trialEndsAt: string;
 }
 
 /** What the owner's dashboard loads. */
@@ -99,6 +101,10 @@ export interface Company {
   /** Support member who onboarded this business ("" = created by MasterAdmin). */
   createdByAgentName: string;
   setupFee: number;
+  agentEarning: number;
+  /** Setup period end for support-created businesses without a confirmed subscription. */
+  trialEndsAt: string;
+  trialActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,7 +135,11 @@ export interface SupportAgent {
   setupEarnings: number;
 }
 
-export type OnboardingState = "awaiting_activation" | "live" | "offline";
+/**
+ * setup_period: live during the free setup days; awaiting_activation: setup days over,
+ * subscription not confirmed (offline); live / offline: normal subscription states.
+ */
+export type OnboardingState = "setup_period" | "awaiting_activation" | "live" | "offline";
 
 /** A business as its support member sees it. */
 export interface AgentBusiness {
@@ -144,13 +154,17 @@ export interface AgentBusiness {
   state: OnboardingState;
   managerHasLoggedIn: boolean;
   passwordChanged: boolean;
+  /** Setup fee charged to the business and the member's share of it, fixed when the business was created. */
   setupFee: number;
+  agentEarning: number;
+  trialEndsAt: string;
   createdAt: string;
 }
 
 export interface SupportPortal {
   agent: SupportAgent;
   businesses: AgentBusiness[];
+  pricing: import("./settings").Pricing;
 }
 
 export type ActivityCategory = "auth" | "restaurant" | "admin" | "security" | "support";
@@ -177,6 +191,8 @@ export type ActivityType =
   | "support.business_created"
   | "support.password_reissued"
   | "restaurant.password_set"
+  | "contract.generated"
+  | "admin.settings_changed"
   | "security.unauthorized";
 
 export interface ActivityEvent {

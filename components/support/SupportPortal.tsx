@@ -21,9 +21,11 @@ import { FaWhatsapp } from "react-icons/fa";
 import { createBusiness, reissueTempPassword, type NewBusinessInput } from "@/app/actions/support";
 import { PoweredBy } from "@/components/auth/AuthCard";
 import { supportAgreementSections } from "@/components/legal/supportAgreement";
-import { BRAND, SETUP_FEES, formatRwf } from "@/lib/brand";
+import { BRAND, formatRwf } from "@/lib/brand";
 import { getIdToken } from "@/lib/firebase";
+import { agentEarning, type Pricing } from "@/lib/settings";
 import type { AgentBusiness, OnboardingState, SupportPortal as PortalData } from "@/lib/types";
+import { downloadContract } from "@/lib/download-contract";
 
 type Tab = "overview" | "new" | "businesses" | "guide" | "agreement";
 
@@ -31,7 +33,8 @@ const input =
   "w-full rounded-2xl border border-[#edd4cb] bg-white px-4 py-3 outline-none focus:border-[#f08c6c] focus:ring-2 focus:ring-[#f08c6c]/20 disabled:bg-gray-50";
 
 const STATE: Record<OnboardingState, { label: string; style: string }> = {
-  awaiting_activation: { label: "Awaiting activation", style: "bg-amber-50 text-amber-800" },
+  setup_period: { label: "Setup period — live", style: "bg-sky-50 text-sky-700" },
+  awaiting_activation: { label: "Awaiting subscription — offline", style: "bg-amber-50 text-amber-800" },
   live: { label: "Live", style: "bg-green-50 text-green-700" },
   offline: { label: "Offline", style: "bg-gray-100 text-gray-600" },
 };
@@ -57,6 +60,7 @@ const waNumber = (phone: string) => {
 };
 
 interface Credentials {
+  companyId: string;
   businessName: string;
   managerName: string;
   email: string;
@@ -73,12 +77,12 @@ export default function SupportPortal({
   onReload: () => Promise<void>;
   onLogout: () => void;
 }) {
-  const { agent, businesses } = data;
+  const { agent, businesses, pricing } = data;
   const suspended = agent.status === "suspended";
   const [tab, setTab] = useState<Tab>("overview");
   const [credentials, setCredentials] = useState<Credentials | null>(null);
 
-  const awaiting = businesses.filter((b) => b.state === "awaiting_activation").length;
+  const awaiting = businesses.filter((b) => b.state === "awaiting_activation" || b.state === "setup_period").length;
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -158,15 +162,26 @@ export default function SupportPortal({
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Stat icon={Building2} label="Businesses onboarded" value={String(agent.businesses)} />
               <Stat icon={CheckCircle2} label="Live pages" value={String(agent.liveBusinesses)} />
-              <Stat icon={Clock} label="Awaiting activation" value={String(awaiting)} />
+              <Stat icon={Clock} label="Awaiting subscription" value={String(awaiting)} />
               <Stat icon={Wallet} label="Setup fees earned" value={formatRwf(agent.setupEarnings)} />
             </div>
             <div className="rounded-3xl border border-[#f4d4ca] bg-white p-6">
               <h2 className="text-lg font-bold">How your work pays</h2>
+              <ul className="mt-3 space-y-1 text-sm leading-6 text-gray-600">
+                <li>
+                  <strong>Standard</strong> — setup fee {formatRwf(pricing.standard.setupFee)}, you keep{" "}
+                  <strong>{formatRwf(agentEarning(pricing, "standard"))}</strong>.
+                </li>
+                <li>
+                  <strong>Premium</strong> — setup fee {formatRwf(pricing.premium.setupFee)}, you keep{" "}
+                  <strong>{formatRwf(agentEarning(pricing, "premium"))}</strong>; hand the remaining{" "}
+                  {formatRwf(pricing.premium.setupFee - agentEarning(pricing, "premium"))} to Ironic Lab.
+                </li>
+              </ul>
               <p className="mt-2 text-sm leading-6 text-gray-600">
-                You keep the one-time setup fee from every business you onboard — {formatRwf(SETUP_FEES.standard)} for Standard,{" "}
-                {formatRwf(SETUP_FEES.premium)} for Premium. That is your only earning from ScanDish; subscription fees go to
-                Ironic Lab Inc. through the official payment channel.
+                That is your only earning from ScanDish. Subscription fees go to Ironic Lab Inc. through the official payment
+                channel. New businesses are live for a {pricing.trialDays}-day setup period, then go offline until their
+                subscription is confirmed.
               </p>
               {!suspended && (
                 <button onClick={() => setTab("new")} className="mt-4 flex items-center gap-2 rounded-2xl bg-[#f08c6c] px-5 py-3 font-semibold text-white">
@@ -181,6 +196,7 @@ export default function SupportPortal({
         {tab === "new" && (
           <NewBusinessForm
             disabled={suspended}
+            pricing={pricing}
             onCreated={async (c) => {
               setCredentials(c);
               await onReload();
@@ -199,7 +215,7 @@ export default function SupportPortal({
           </div>
         )}
 
-        {tab === "guide" && <OnboardingGuide />}
+        {tab === "guide" && <OnboardingGuide pricing={pricing} />}
 
         {tab === "agreement" && (
           <div className="rounded-3xl border border-[#f4d4ca] bg-white p-6 md:p-8">
@@ -208,7 +224,7 @@ export default function SupportPortal({
               Accepted {date(agent.agreementAcceptedAt)} · version {agent.agreementVersion || "—"} · set by {BRAND.company}
             </p>
             <div className="mt-6 space-y-8">
-              {supportAgreementSections.map((s, i) => (
+              {supportAgreementSections(pricing).map((s, i) => (
                 <section key={s.id}>
                   <h3 className="text-lg font-bold">
                     {i + 1}. {s.title}
@@ -238,7 +254,15 @@ function Stat({ icon: Icon, label, value }: { icon: React.ComponentType<{ size?:
   );
 }
 
-function NewBusinessForm({ disabled, onCreated }: { disabled: boolean; onCreated: (c: Credentials) => Promise<void> }) {
+function NewBusinessForm({
+  disabled,
+  pricing,
+  onCreated,
+}: {
+  disabled: boolean;
+  pricing: Pricing;
+  onCreated: (c: Credentials) => Promise<void>;
+}) {
   const [form, setForm] = useState<NewBusinessInput>(EMPTY);
   const [explained, setExplained] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -255,6 +279,7 @@ function NewBusinessForm({ disabled, onCreated }: { disabled: boolean; onCreated
       const res = await createBusiness(await getIdToken(), form);
       if (!res.ok) return setError(res.error);
       await onCreated({
+        companyId: res.data.companyId,
         businessName: form.companyName,
         managerName: form.managerName,
         email: res.data.email,
@@ -287,8 +312,12 @@ function NewBusinessForm({ disabled, onCreated }: { disabled: boolean; onCreated
         <Field label="Location"><input className={input} value={form.location} onChange={set("location")} /></Field>
         <Field label="Plan">
           <select className={input} value={form.plan} onChange={set("plan")}>
-            <option value="standard">Standard — setup {formatRwf(SETUP_FEES.standard)}</option>
-            <option value="premium">Premium — setup {formatRwf(SETUP_FEES.premium)}</option>
+            <option value="standard">
+              Standard — setup {formatRwf(pricing.standard.setupFee)} (you keep {formatRwf(agentEarning(pricing, "standard"))})
+            </option>
+            <option value="premium">
+              Premium — setup {formatRwf(pricing.premium.setupFee)} (you keep {formatRwf(agentEarning(pricing, "premium"))})
+            </option>
           </select>
         </Field>
         <Field label="Notes for ScanDish (optional)"><input className={input} value={form.notes} onChange={set("notes")} /></Field>
@@ -345,7 +374,14 @@ function BusinessList({
     try {
       const res = await reissueTempPassword(await getIdToken(), b.id);
       if (!res.ok) return setError(res.error);
-      onCredentials({ businessName: b.companyName, managerName: b.managerName, email: res.data.email, phone: b.phone, tempPassword: res.data.tempPassword });
+      onCredentials({
+        companyId: b.id,
+        businessName: b.companyName,
+        managerName: b.managerName,
+        email: res.data.email,
+        phone: b.phone,
+        tempPassword: res.data.tempPassword,
+      });
     } finally {
       setBusy(null);
     }
@@ -366,13 +402,29 @@ function BusinessList({
               <p className="mt-1 text-sm text-gray-500">
                 {b.managerName} · {b.email} · {b.phone}
               </p>
+              {b.state === "setup_period" && (
+                <p className="mt-1 text-xs font-semibold text-sky-700">
+                  Live until {date(b.trialEndsAt)} — goes offline unless ScanDish confirms the subscription
+                </p>
+              )}
               <p className="mt-1 text-xs text-gray-400">
-                Created {date(b.createdAt)} · setup fee {formatRwf(b.setupFee)} ·{" "}
+                Created {date(b.createdAt)} · setup fee {formatRwf(b.setupFee)}, your share {formatRwf(b.agentEarning)} ·{" "}
                 {b.passwordChanged ? "manager has set their own password" : b.managerHasLoggedIn ? "manager signed in, password not yet changed" : "manager hasn’t signed in yet"}
               </p>
             </div>
-            <div className="flex gap-2">
-              {b.state === "live" && b.slug && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={async () => {
+                  setBusy(`contract-${b.id}`);
+                  setError((await downloadContract(b.id, b.companyName)) ?? "");
+                  setBusy(null);
+                }}
+                disabled={busy === `contract-${b.id}`}
+                className="flex items-center gap-1 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <FileText size={14} /> {busy === `contract-${b.id}` ? "Generating..." : "Contract PDF"}
+              </button>
+              {(b.state === "live" || b.state === "setup_period") && b.slug && (
                 <a href={`/r/${b.slug}`} target="_blank" rel="noreferrer" className="rounded-xl border border-[#f4d4ca] px-3 py-2 text-sm font-semibold text-gray-700">
                   View page
                 </a>
@@ -396,6 +448,7 @@ function BusinessList({
 
 function CredentialsDialog({ c, onClose }: { c: Credentials; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [contract, setContract] = useState<"idle" | "busy" | string>("idle");
   const loginUrl = `${window.location.origin}/login`;
   const message =
     `Hello ${c.managerName}, welcome to ScanDish!\n\n` +
@@ -434,6 +487,17 @@ function CredentialsDialog({ c, onClose }: { c: Credentials; onClose: () => void
           <button onClick={copy} className="flex items-center justify-center gap-2 rounded-2xl border border-[#f4d4ca] py-3 font-semibold text-gray-700">
             <Copy size={16} /> {copied ? "Copied" : "Copy message"}
           </button>
+          <button
+            onClick={async () => {
+              setContract("busy");
+              setContract((await downloadContract(c.companyId, c.businessName)) ?? "idle");
+            }}
+            disabled={contract === "busy"}
+            className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 py-3 font-semibold text-white disabled:opacity-50"
+          >
+            <FileText size={16} /> {contract === "busy" ? "Generating..." : "Generate service contract (PDF)"}
+          </button>
+          {contract !== "idle" && contract !== "busy" && <p className="text-center text-sm text-red-600">{contract}</p>}
           <button onClick={onClose} className="py-2 text-sm font-semibold text-gray-500">
             I&apos;ve given the details — close
           </button>
@@ -443,7 +507,7 @@ function CredentialsDialog({ c, onClose }: { c: Credentials; onClose: () => void
   );
 }
 
-function OnboardingGuide() {
+function OnboardingGuide({ pricing }: { pricing: Pricing }) {
   const steps: { title: string; points: string[] }[] = [
     {
       title: "1. Present ScanDish",
@@ -457,9 +521,9 @@ function OnboardingGuide() {
     {
       title: "2. Explain prices and payments",
       points: [
-        `Setup fee (paid to you): ${formatRwf(SETUP_FEES.standard)} Standard · ${formatRwf(SETUP_FEES.premium)} Premium. Give a receipt.`,
-        "Subscription (paid to ScanDish, not to you): Standard 72,000 RWF / 6 months or 144,000 RWF / year; Premium 90,000 RWF / 6 months or 180,000 RWF / year.",
-        "Their page goes live when ScanDish confirms the subscription payment.",
+        `Setup fee (collected by you): ${formatRwf(pricing.standard.setupFee)} Standard · ${formatRwf(pricing.premium.setupFee)} Premium. Give a receipt.`,
+        `Subscription (paid to ScanDish, not to you): Standard ${formatRwf(pricing.standard.sixMonths)} / 6 months or ${formatRwf(pricing.standard.year)} / year; Premium ${formatRwf(pricing.premium.sixMonths)} / 6 months or ${formatRwf(pricing.premium.year)} / year.`,
+        `The page is live for a ${pricing.trialDays}-day setup period right after you create the account, so they can check it. It stays online once ScanDish confirms the subscription payment.`,
         "If a subscription ends, the page stays online 10 more days, then goes offline until renewal.",
       ],
     },
@@ -476,6 +540,7 @@ function OnboardingGuide() {
       title: "4. Create the account",
       points: [
         "Use the manager's real email — it becomes their login.",
+        "Generate the service contract PDF, print two copies, and have the manager sign and stamp both for their business. One copy stays with them; bring one back to ScanDish.",
         "Give the temporary password privately (in person or WhatsApp to the manager's own number).",
         "At first sign-in they choose their own password and accept the Terms. After that you can't access their account.",
       ],

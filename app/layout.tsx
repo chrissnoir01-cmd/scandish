@@ -111,28 +111,7 @@ export default function RootLayout({
     },
   };
 
-  const softwareSchema = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "ScanDish",
-    applicationCategory: "BusinessApplication",
-    operatingSystem: "Web",
-    url: "https://scandish.online",
-    creator: { "@type": "Organization", name: "Ironic Lab Inc.", url: "https://ironiclab.site" },
-    logo: "https://scandish.online/images/logo.jpg",
-    description:
-      "ScanDish helps restaurants create smart QR-powered digital menu pages with menu management, gallery, offers, contact links, and map directions.",
-    // Keep in sync with the pricing section in components/landing/LandingPage.tsx.
-    offers: [
-      { "@type": "Offer", name: "Standard – One-time Setup", price: "20000", priceCurrency: "RWF" },
-      { "@type": "Offer", name: "Standard – 6 Months", price: "72000", priceCurrency: "RWF" },
-      { "@type": "Offer", name: "Standard – 1 Year", price: "144000", priceCurrency: "RWF" },
-      { "@type": "Offer", name: "Premium – One-time Setup", price: "80000", priceCurrency: "RWF" },
-      { "@type": "Offer", name: "Premium – 6 Months", price: "90000", priceCurrency: "RWF" },
-      { "@type": "Offer", name: "Premium – 1 Year", price: "180000", priceCurrency: "RWF" },
-    ],
-  };
-
+  // The SoftwareApplication schema (with live prices) is emitted by the homepage.
   return (
     <html lang="en">
       <body>
@@ -147,13 +126,6 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(websiteSchema),
-          }}
-        />
-
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(softwareSchema),
           }}
         />
 

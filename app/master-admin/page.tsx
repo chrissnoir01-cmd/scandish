@@ -19,6 +19,8 @@ import { PoweredBy } from "@/components/auth/AuthCard";
 import ActivityPanel from "@/components/admin/ActivityPanel";
 import AccountsPanel from "@/components/admin/AccountsPanel";
 import SupportTeamPanel from "@/components/admin/SupportTeamPanel";
+import SettingsPanel from "@/components/admin/SettingsPanel";
+import { downloadContract } from "@/lib/download-contract";
 
 const BRAND = "#f08c6c";
 
@@ -56,7 +58,8 @@ export default function MasterAdminPage() {
   const [renewCompany, setRenewCompany] = useState<Company | null>(null);
   const [renewDays, setRenewDays] = useState(180);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"companies" | "activity" | "support" | "accounts">("companies");
+  const [view, setView] = useState<"companies" | "activity" | "support" | "accounts" | "settings">("companies");
+  const [contractBusy, setContractBusy] = useState<string | null>(null);
 
   const loadCompanies = useCallback(async () => {
     const res = await listCompanies(await getIdToken());
@@ -185,6 +188,7 @@ export default function MasterAdminPage() {
               ["activity", "System activity"],
               ["support", "Support team"],
               ["accounts", "Accounts"],
+              ["settings", "Settings"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -203,6 +207,7 @@ export default function MasterAdminPage() {
         {view === "activity" && <ActivityPanel />}
         {view === "accounts" && <AccountsPanel />}
         {view === "support" && <SupportTeamPanel />}
+        {view === "settings" && <SettingsPanel />}
 
         {view === "companies" && (
         <>
@@ -311,8 +316,15 @@ export default function MasterAdminPage() {
                         <p className="text-sm text-gray-500">Page: /r/{company.slug}</p>
                         {company.createdByAgentName && (
                           <p className="text-sm text-violet-700">
-                            Onboarded by {company.createdByAgentName} (support team)
-                            {!company.subscriptionEnd && company.status !== "active" && " · awaiting your activation"}
+                            Onboarded by {company.createdByAgentName} (support team) · setup fee{" "}
+                            {company.setupFee.toLocaleString("en-US")} RWF, member keeps {company.agentEarning.toLocaleString("en-US")} RWF
+                          </p>
+                        )}
+                        {!company.subscriptionEnd && company.trialEndsAt && (
+                          <p className="mt-1 inline-block rounded-lg bg-sky-50 px-2 py-1 text-sm font-semibold text-sky-800">
+                            {company.trialActive
+                              ? `Setup period — live until ${new Date(company.trialEndsAt).toLocaleDateString("en-GB")}. Use Renew to confirm the subscription.`
+                              : "Setup period ended — offline until you confirm the subscription (Renew)."}
                           </p>
                         )}
                         <p className="text-sm text-gray-500">
@@ -408,6 +420,18 @@ export default function MasterAdminPage() {
 
                       <button onClick={() => setRenewCompany(company)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold">
                         Renew
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setContractBusy(company.id);
+                          const err = await downloadContract(company.id, company.companyName);
+                          setContractBusy(null);
+                          if (err) alert(err);
+                        }}
+                        disabled={contractBusy === company.id}
+                        className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold disabled:opacity-50"
+                      >
+                        {contractBusy === company.id ? "Generating..." : "Contract PDF"}
                       </button>
                       <button onClick={() => setConfirmDeleteCompany(company)} className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold">
                         Delete

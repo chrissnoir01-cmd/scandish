@@ -3,8 +3,8 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { AuthError, requireUser } from "./auth";
 import { adminDb } from "./firebase-admin";
-import { isPubliclyVisible } from "../subscription";
-import type { AgentBusiness, AgentStatus, SupportAgent } from "../types";
+import { inTrial, isPubliclyVisible } from "../subscription";
+import type { AgentBusiness, AgentStatus, OnboardingState, SupportAgent } from "../types";
 
 type Doc = Record<string, unknown>;
 const s = (v: unknown) => (typeof v === "string" ? v : "");
@@ -89,11 +89,10 @@ export async function businessesForAgent(agentId: string): Promise<AgentBusiness
     .map((c): AgentBusiness => {
       const d = c.data();
       const owner = userByUid.get(s(d.ownerUid)) ?? {};
-      const state = !d.subscriptionEnd && d.status !== "active"
-        ? "awaiting_activation"
-        : isPubliclyVisible({ status: d.status, subscriptionEnd: s(d.subscriptionEnd) })
-          ? "live"
-          : "offline";
+      const vis = { status: d.status, subscriptionEnd: s(d.subscriptionEnd), trialEndsAt: s(d.trialEndsAt) };
+      const state: OnboardingState = !vis.subscriptionEnd
+        ? d.status === "active" && inTrial(vis) ? "setup_period" : "awaiting_activation"
+        : isPubliclyVisible(vis) ? "live" : "offline";
       return {
         id: c.id,
         companyName: s(d.companyName),
@@ -107,6 +106,9 @@ export async function businessesForAgent(agentId: string): Promise<AgentBusiness
         managerHasLoggedIn: Boolean(s(owner.firstLoginAt)),
         passwordChanged: owner.mustChangePassword !== true,
         setupFee: n(d.setupFee),
+        // Businesses created before revenue sharing recorded only the fee, which the member kept in full.
+        agentEarning: typeof d.agentEarning === "number" ? d.agentEarning : n(d.setupFee),
+        trialEndsAt: vis.trialEndsAt,
         createdAt: s(d.createdAt),
       };
     })
@@ -116,7 +118,7 @@ export async function businessesForAgent(agentId: string): Promise<AgentBusiness
 export function statsFor(businesses: AgentBusiness[]) {
   return {
     businesses: businesses.length,
-    liveBusinesses: businesses.filter((b) => b.state === "live").length,
-    setupEarnings: businesses.reduce((sum, b) => sum + b.setupFee, 0),
+    liveBusinesses: businesses.filter((b) => b.state === "live" || b.state === "setup_period").length,
+    setupEarnings: businesses.reduce((sum, b) => sum + b.agentEarning, 0),
   };
 }

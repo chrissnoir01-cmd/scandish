@@ -19,7 +19,4 @@ export const LEGAL_UPDATED = "28 September 2026";
 /** Bump when the Support Team Agreement changes materially. */
 export const AGREEMENT_VERSION = "2026-09-28";
 
-/** One-time setup fees (RWF) — kept by the support member who onboards the business. Mirrors the pricing page. */
-export const SETUP_FEES = { standard: 20000, premium: 80000 } as const;
-
 export const formatRwf = (n: number) => `${n.toLocaleString("en-US")} RWF`;
