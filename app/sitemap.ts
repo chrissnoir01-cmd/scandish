@@ -1,26 +1,23 @@
-import { MetadataRoute } from "next";
+import type { MetadataRoute } from "next";
+import { listPublicSlugs } from "@/lib/server/restaurants";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  return [
-    {
-      url: "https://scandish.online",
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 1,
-    },
+const BASE = "https://scandish.online";
 
-    {
-      url: "https://scandish.online/login",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
+export const revalidate = 3600;
 
-    {
-      url: "https://scandish.online/company-signup",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const pages: MetadataRoute.Sitemap = [
+    { url: BASE, changeFrequency: "weekly", priority: 1 },
+    { url: `${BASE}/login`, changeFrequency: "monthly", priority: 0.5 },
   ];
+
+  try {
+    const slugs = await listPublicSlugs();
+    pages.push(...slugs.map((slug) => ({ url: `${BASE}/r/${slug}`, changeFrequency: "daily" as const, priority: 0.8 })));
+  } catch (err) {
+    // Never fail the sitemap (or the build) because the database is unreachable.
+    console.error("sitemap: could not list restaurants", err);
+  }
+
+  return pages;
 }

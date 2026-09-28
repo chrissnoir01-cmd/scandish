@@ -1,9 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../../lib/firebase";
+import { auth, getIdToken, uploadFile } from "../../lib/firebase";
+import { loadDashboard, saveDashboard } from "../actions/restaurant";
+import { GRACE_DAYS } from "../../lib/subscription";
+import type { MenuCategory, MenuItem, Offer } from "../../lib/types";
 import {
   onAuthStateChanged,
   signOut,
@@ -19,10 +22,8 @@ import {
   Wifi,
   Truck,
   Car,
-  Music,
   Coffee,
   Tag,
-  Flame,
   CheckCircle2,
   Edit3,
   Trash2,
@@ -47,15 +48,6 @@ import {
   CircleCheck,
   Globe,
 } from "lucide-react";
-import {
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
 
 // --- CONSTANTS ---
@@ -70,26 +62,7 @@ type TabKey =
   | "offers"
   | "account";
 
-// --- TYPES ---
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: string;
-  image: string;
-  available: boolean;
-  featured: boolean;
-}
-
-interface MenuCategory {
-  category: string;
-  items: MenuItem[];
-}
-
-interface Offer {
-  text: string;
-  icon: string;
-}
+const SUPPORT_WHATSAPP = "https://wa.me/250781822350";
 
 // --- REUSABLE UI COMPONENTS ---
 
@@ -148,7 +121,7 @@ const SectionCard = ({
   title: string;
   subtitle?: string;
   children: React.ReactNode;
-  icon?: any;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
 }) => (
   <section className="overflow-hidden rounded-3xl border border-[#f4d4ca] bg-white shadow-sm">
     <div className="flex items-center justify-between border-b border-[#f4d4ca] bg-[#fffdfa] px-6 py-4">
@@ -259,10 +232,12 @@ export default function DashboardPage() {
   const [confPass, setConfPass] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-  const [company, setCompany] = useState<any>(null);
-  
-  // PREMIUM FIELDS
-  const [plan, setPlan] = useState("Basic");
+  const [plan, setPlan] = useState("standard");
+
+  // LOAD / DIRTY STATE
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
+  const [dirty, setDirty] = useState(false);
+  const loaded = useRef(false);
 
   // UPLOAD STATES
   const [uploading, setUploading] = useState<string | null>(null);
@@ -274,13 +249,17 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const uploadImageToCloudinary = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Upload failed");
-    return data.url as string;
+  /** Uploads with a spinner key; always clears the spinner and reports failures. */
+  const runUpload = async (key: string, file: File): Promise<string | null> => {
+    setUploading(key);
+    try {
+      return await uploadFile(file);
+    } catch (err) {
+      triggerToast(err instanceof Error ? err.message : "Upload failed", "error");
+      return null;
+    } finally {
+      setUploading(null);
+    }
   };
 
   // --- INITIALIZATION ---
@@ -295,56 +274,64 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
+    if (!user) return;
     const loadData = async () => {
-      if (!user) return;
-      try {
-        const docRef = doc(db, "restaurants", user.uid);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setName(data.name || "");
-          setSlug(data.slug || "");
-          setDescription(data.description || "");
-          setAbout(data.about || "");
-          setLogo(data.logo || "");
-          setCoverImage(data.coverImage || "");
-          setPhone(data.phone || "");
-          setWhatsapp(data.whatsapp || "");
-          setWebsite(data.website || "");
-          setLocation(data.location || "");
-          
-          // Socials mapping
-          setInstagram(data.social?.instagram || "");
-          setFacebook(data.social?.facebook || "");
-          setTiktok(data.social?.tiktok || "");
-
-          setPrimaryColor(data.theme?.primaryColor || BRAND);
-          setSecondaryColor(data.theme?.secondaryColor || "#111827");
-          setBackgroundColor(data.theme?.backgroundColor || "#ffffff");
-          setMenu(data.menu || []);
-          setGallery(data.gallery || []);
-          setOffers(data.offers || []);
-          setPlan(data.plan || "Basic");
-
-          if (data.companyId) {
-            const companySnap = await getDoc(doc(db, "companies", data.companyId));
-            if (companySnap.exists()) {
-              const cData = companySnap.data();
-              setCompany(cData);
-              if (cData.subscriptionEnd) {
-                const diff = new Date(cData.subscriptionEnd).getTime() - Date.now();
-                setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Load error:", err);
+      const res = await loadDashboard(await user.getIdToken());
+      if (!res.ok) {
+        setLoadState("error");
+        triggerToast(res.error, "error");
+        return;
       }
+      const data = res.data;
+      if (!data) {
+        setLoadState("missing");
+        return;
+      }
+      setName(data.name);
+      setSlug(data.slug);
+      setDescription(data.description);
+      setAbout(data.about);
+      setLogo(data.logo);
+      setCoverImage(data.coverImage);
+      setPhone(data.phone);
+      setWhatsapp(data.whatsapp);
+      setWebsite(data.website);
+      setLocation(data.location);
+      setInstagram(data.social.instagram);
+      setFacebook(data.social.facebook);
+      setTiktok(data.social.tiktok);
+      setPrimaryColor(data.theme.primaryColor);
+      setSecondaryColor(data.theme.secondaryColor);
+      setBackgroundColor(data.theme.backgroundColor);
+      setMenu(data.menu);
+      setGallery(data.gallery);
+      setOffers(data.offers);
+      setPlan(data.plan);
+      setDaysRemaining(data.subscription?.daysRemaining ?? null);
+      setLoadState("ready");
     };
     loadData();
   }, [user]);
+
+  // Any edit after the initial load marks the page as unpublished.
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    if (!loaded.current) {
+      loaded.current = true;
+      return;
+    }
+    setDirty(true);
+  }, [
+    loadState, name, description, about, logo, coverImage, phone, whatsapp, website, location,
+    instagram, facebook, tiktok, primaryColor, secondaryColor, backgroundColor, menu, gallery, offers,
+  ]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   // --- MENU LOGIC ---
 
@@ -401,7 +388,7 @@ export default function DashboardPage() {
       featured: mFeatured,
     };
 
-    let updatedMenu = menu.map((cat) => ({
+    const updatedMenu = menu.map((cat) => ({
       ...cat,
       items: cat.items.filter((i) => i.id !== item.id),
     })).filter(cat => cat.items.length > 0);
@@ -432,10 +419,20 @@ export default function DashboardPage() {
   };
 
   const handleRenameCategory = () => {
-    if (!catToRename || !newCatName.trim()) return;
-    const updated = menu.map((c) =>
-      c.category === catToRename ? { ...c, category: newCatName.trim() } : c
-    );
+    const target = newCatName.trim();
+    if (!catToRename || !target) return;
+    if (target === catToRename) {
+      setCatToRename(null);
+      return;
+    }
+    // Renaming onto an existing category merges the two instead of duplicating it.
+    const moving = menu.find((c) => c.category === catToRename)?.items ?? [];
+    const updated = menu
+      .filter((c) => c.category !== catToRename)
+      .map((c) => (c.category === target ? { ...c, items: [...c.items, ...moving] } : c));
+    if (!updated.some((c) => c.category === target)) {
+      updated.push({ category: target, items: moving });
+    }
     setMenu(updated);
     setCatToRename(null);
     triggerToast("Category renamed");
@@ -454,17 +451,15 @@ export default function DashboardPage() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading("gallery");
-    try {
-      const urls = await Promise.all(
-        Array.from(files).map((file) => uploadImageToCloudinary(file))
-      );
-      setGallery((prev) => [...prev, ...urls]);
-      triggerToast(`${urls.length} images added to gallery`);
-    } catch (err) {
-      triggerToast("Upload failed", "error");
-    } finally {
-      setUploading(null);
-    }
+    // Keep whatever succeeded even if some files fail.
+    const results = await Promise.allSettled(Array.from(files).map((file) => uploadFile(file)));
+    const urls = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    const failed = results.length - urls.length;
+    setGallery((prev) => [...prev, ...urls]);
+    setUploading(null);
+    e.target.value = "";
+    if (failed) triggerToast(`${failed} of ${results.length} uploads failed`, "error");
+    else triggerToast(`${urls.length} images added to gallery`);
   };
 
   const suggestIcon = (t: string) => {
@@ -488,7 +483,7 @@ export default function DashboardPage() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPass !== confPass) return triggerToast("Passwords do not match", "error");
-    if (newPass.length < 6) return triggerToast("Password too short", "error");
+    if (newPass.length < 8) return triggerToast("Password must be at least 8 characters", "error");
     
     setSaving(true);
     try {
@@ -497,8 +492,14 @@ export default function DashboardPage() {
       await updatePassword(user!, newPass);
       triggerToast("Password updated successfully");
       setCurPass(""); setNewPass(""); setConfPass("");
-    } catch (err: any) {
-      triggerToast(err.message, "error");
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      triggerToast(
+        code === "auth/wrong-password" || code === "auth/invalid-credential"
+          ? "Current password is incorrect"
+          : "Password update failed",
+        "error"
+      );
     } finally {
       setSaving(false);
     }
@@ -510,8 +511,8 @@ export default function DashboardPage() {
     try {
       await sendEmailVerification(user);
       triggerToast("Verification link sent to your email");
-    } catch (err: any) {
-      triggerToast(err.message, "error");
+    } catch {
+      triggerToast("Could not send the email. Try again in a few minutes.", "error");
     } finally {
       setTimeout(() => setVerifying(false), 5000);
     }
@@ -520,22 +521,21 @@ export default function DashboardPage() {
   // --- SAVE & PUBLISH ---
 
   const handleSave = async () => {
-    if (!user || !slug || !name) return triggerToast("Missing required info", "error");
+    if (!user || loadState !== "ready") return;
+    if (!name.trim()) return triggerToast("Business name is required", "error");
     setSaving(true);
     try {
-      await setDoc(doc(db, "restaurants", user.uid), {
-        ownerUid: user.uid,
-        ownerEmail: user.email,
-        name, slug, description, about, logo, coverImage, phone, whatsapp, website, location,
+      const res = await saveDashboard(await getIdToken(), {
+        name, description, about, logo, coverImage, phone, whatsapp, website, location,
         social: { instagram, facebook, tiktok },
         theme: { primaryColor, secondaryColor, backgroundColor },
-        menu, gallery, offers, plan,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
+        menu, gallery, offers,
+      });
+      if (!res.ok) return triggerToast(res.error, "error");
+      setDirty(false);
       triggerToast("Changes published live!");
-    } catch (err) {
-      triggerToast("Save failed", "error");
+    } catch {
+      triggerToast("Save failed. Check your connection and try again.", "error");
     } finally {
       setSaving(false);
     }
@@ -622,11 +622,37 @@ export default function DashboardPage() {
     return Math.round((score / 9) * 100);
   }, [name, slug, description, logo, coverImage, phone, whatsapp, menu, gallery, offers]);
 
-  if (checkingAuth) {
+  if (checkingAuth || loadState === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-[#fff8f5]">
         <Loader2 className="animate-spin text-[#f08c6c]" size={40} />
       </div>
+    );
+  }
+
+  if (loadState !== "ready") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#fff8f5] px-6">
+        <div className="max-w-md rounded-3xl border border-[#f4d4ca] bg-white p-8 text-center shadow-sm">
+          <AlertTriangle className="mx-auto mb-4 text-[#f08c6c]" size={36} />
+          <h1 className="text-xl font-black">
+            {loadState === "missing" ? "No restaurant linked to this account" : "Could not load your dashboard"}
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            {loadState === "missing"
+              ? "Sign up with the invite code from ScanDish, or contact support."
+              : "Check your connection and refresh the page."}
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <a href={SUPPORT_WHATSAPP} target="_blank" rel="noreferrer" className="rounded-2xl bg-[#f08c6c] px-5 py-3 text-sm font-bold text-white">
+              Contact support
+            </a>
+            <button onClick={() => signOut(auth)} className="rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-500">
+              Logout
+            </button>
+          </div>
+        </div>
+      </main>
     );
   }
 
@@ -645,14 +671,19 @@ export default function DashboardPage() {
               <h1 className="text-xl font-black tracking-tight md:text-2xl">Dashboard</h1>
             </div>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-2xl bg-[#f08c6c] px-6 py-2.5 font-bold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
-            Publish Changes
-          </button>
+          <div className="flex items-center gap-3">
+            {dirty && (
+              <span className="hidden text-xs font-bold text-orange-500 sm:inline">Unpublished changes</span>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || uploading !== null}
+              className="flex items-center gap-2 rounded-2xl bg-[#f08c6c] px-6 py-2.5 font-bold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+              Publish Changes
+            </button>
+          </div>
         </div>
       </header>
 
@@ -664,7 +695,7 @@ export default function DashboardPage() {
               <AlertTriangle className="shrink-0" />
               <div>
                 <p className="font-bold">Subscription ending soon</p>
-                <p className="text-sm">Renews in {daysRemaining} days. Contact support to renew your plan.</p>
+                <p className="text-sm">Ends in {daysRemaining} day{daysRemaining > 1 ? "s" : ""}. Contact support to renew your plan.</p>
               </div>
             </div>
           )}
@@ -673,7 +704,11 @@ export default function DashboardPage() {
               <AlertTriangle className="shrink-0" />
               <div>
                 <p className="font-bold">Subscription expired</p>
-                <p className="text-sm">Your restaurant page is hidden. Renew to make it public again.</p>
+                <p className="text-sm">
+                  {daysRemaining >= -GRACE_DAYS
+                    ? `Your public page goes offline in ${GRACE_DAYS + daysRemaining + 1} day(s). Renew to keep it online.`
+                    : "Your restaurant page is hidden. Renew to make it public again."}
+                </p>
               </div>
             </div>
           )}
@@ -788,11 +823,9 @@ export default function DashboardPage() {
                   <UploadBox
                     label="Business Logo"
                     image={logo}
-                   onUpload={async (file: File) => {
-                      setUploading("logo");
-                      const url = await uploadImageToCloudinary(file);
-                      setLogo(url);
-                      setUploading(null);
+                    onUpload={async (file: File) => {
+                      const url = await runUpload("logo", file);
+                      if (url) setLogo(url);
                     }}
                     uploading={uploading === "logo"}
                   />
@@ -801,10 +834,8 @@ export default function DashboardPage() {
                     image={coverImage}
                     isCover
                     onUpload={async (file: File) => {
-                      setUploading("cover");
-                      const url = await uploadImageToCloudinary(file);
-                      setCoverImage(url);
-                      setUploading(null);
+                      const url = await runUpload("cover", file);
+                      if (url) setCoverImage(url);
                     }}
                     uploading={uploading === "cover"}
                   />
@@ -848,7 +879,7 @@ export default function DashboardPage() {
                     <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">Item Photo</label>
                     <div className="flex items-center gap-4">
                       <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border bg-gray-50">
-                        {mImg ? <img src={mImg} className="h-full w-full object-cover" /> : <ImageIcon className="text-gray-200" />}
+                        {mImg ? <img src={mImg} alt="Item preview" className="h-full w-full object-cover" />: <ImageIcon className="text-gray-200" />}
                       </div>
                       <div className="relative flex-1">
                         <div className="flex h-12 items-center justify-center rounded-2xl border-2 border-dashed border-[#f4d4ca] text-sm font-bold text-gray-400">
@@ -856,13 +887,14 @@ export default function DashboardPage() {
                         </div>
                         <input
                           type="file"
+                          accept="image/*"
                           className="absolute inset-0 cursor-pointer opacity-0"
                           onChange={async (e) => {
-                            if (!e.target.files?.[0]) return;
-                            setUploading("menu");
-                            const url = await uploadImageToCloudinary(e.target.files[0]);
-                            setMImg(url);
-                            setUploading(null);
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            const url = await runUpload("menu", file);
+                            if (url) setMImg(url);
                           }}
                         />
                       </div>
@@ -988,6 +1020,7 @@ export default function DashboardPage() {
                   <input
                     type="file"
                     multiple
+                    accept="image/*"
                     className="absolute inset-0 cursor-pointer opacity-0"
                     onChange={handleGalleryUpload}
                   />
@@ -1000,7 +1033,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
                   {gallery.map((img, idx) => (
                     <div key={idx} className="group relative aspect-square overflow-hidden rounded-2xl border bg-gray-50">
-                      <img src={img} className="h-full w-full object-cover" />
+                      <img src={img} alt={`Gallery photo ${idx + 1}`} className="h-full w-full object-cover" />
                       <button
                         onClick={() => setGallery(gallery.filter((_, i) => i !== idx))}
                         className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-all group-hover:opacity-100"
@@ -1132,7 +1165,14 @@ export default function DashboardPage() {
                  <p className="text-xs font-medium text-white/50 mb-4 italic">
                     {daysRemaining !== null ? `${daysRemaining} days remaining` : "Premium Plan"}
                  </p>
-                 <button className="w-full py-3 rounded-2xl bg-white text-gray-900 font-black text-sm active:scale-95 transition-all">Renew Subscription</button>
+                 <a
+                   href={`${SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hello ScanDish, I would like to renew the subscription for ${name}.`)}`}
+                   target="_blank"
+                   rel="noreferrer"
+                   className="block w-full py-3 rounded-2xl bg-white text-center text-gray-900 font-black text-sm active:scale-95 transition-all"
+                 >
+                   Renew Subscription
+                 </a>
                </div>
                <div className="absolute -right-10 -bottom-10 h-32 w-32 bg-white/5 blur-3xl rounded-full" />
             </div>
@@ -1193,8 +1233,8 @@ export default function DashboardPage() {
         <Modal title="Confirm Item Removal" onClose={() => setItemToDelete(null)}>
           <div className="space-y-6">
             <p className="font-medium text-gray-500 leading-relaxed">
-              Remove <span className="font-black text-gray-900">"{itemToDelete.name}"</span>? 
-              This will update your public menu immediately.
+              Remove <span className="font-black text-gray-900">&ldquo;{itemToDelete.name}&rdquo;</span>?
+              It disappears from your public menu when you click Publish Changes.
             </p>
             <div className="flex gap-3">
               <button
@@ -1261,7 +1301,13 @@ export default function DashboardPage() {
 
 // --- SUB-COMPONENTS ---
 
-function FormInput({ label, value, onChange, type = "text" }: any) {
+interface FieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function FormInput({ label, value, onChange, type = "text" }: FieldProps & { type?: string }) {
   return (
     <div className="space-y-2">
       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</label>
@@ -1275,7 +1321,7 @@ function FormInput({ label, value, onChange, type = "text" }: any) {
   );
 }
 
-function ColorInput({ label, value, onChange }: any) {
+function ColorInput({ label, value, onChange }: FieldProps) {
   return (
     <div className="flex flex-col items-center gap-2">
       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 text-center block w-full">{label}</label>
@@ -1289,20 +1335,37 @@ function ColorInput({ label, value, onChange }: any) {
   );
 }
 
-function UploadBox({ label, image, onUpload, uploading, isCover }: any) {
+function UploadBox({
+  label,
+  image,
+  onUpload,
+  uploading,
+  isCover,
+}: {
+  label: string;
+  image: string;
+  onUpload: (file: File) => void;
+  uploading: boolean;
+  isCover?: boolean;
+}) {
   return (
     <div className="space-y-2">
       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</label>
       <div className="relative flex aspect-video w-full flex-col items-center justify-center overflow-hidden rounded-[2rem] border-2 border-dashed border-[#f4d4ca] bg-gray-50 transition-all hover:bg-gray-100">
         {image ? (
-          <img src={image} className={`h-full w-full ${isCover ? "object-cover" : "object-contain p-6"}`} />
+          <img src={image} alt={label} className={`h-full w-full ${isCover ? "object-cover" : "object-contain p-6"}`} />
         ) : (
           <UploadCloud size={32} className="text-gray-200" />
         )}
         <input
           type="file"
+          accept="image/*"
           className="absolute inset-0 cursor-pointer opacity-0"
-          onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) onUpload(file);
+          }}
         />
         {uploading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80">

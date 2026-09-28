@@ -12,11 +12,13 @@ import {
   Utensils,
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
+import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
+import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
-export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
-  const menu = restaurant.menu || [];
-  const gallery = restaurant.gallery || [];
-  const offers = restaurant.offers || [];
+export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
+  const menu = restaurant.menu;
+  const gallery = restaurant.gallery;
+  const offers = restaurant.offers;
 
   const cover = restaurant.coverImage || "/images/hero.png";
   const logo = restaurant.logo || "/images/logo.jpg";
@@ -100,7 +102,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
           <div className="mt-10 flex flex-wrap justify-center gap-4">
             {restaurant.phone && (
               <a
-                href={`tel:${restaurant.phone}`}
+                href={phoneUrl(restaurant.phone)}
                 className="rounded-full bg-white px-7 py-4 font-black text-black"
               >
                 <Phone className="mr-2 inline h-5 w-5" />
@@ -110,7 +112,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
             {restaurant.whatsapp && (
               <a
-                href={`https://wa.me/${restaurant.whatsapp}`}
+                href={whatsappUrl(restaurant.whatsapp)}
                 target="_blank"
                 rel="noreferrer"
                 className="rounded-full bg-green-500 px-7 py-4 font-black text-white"
@@ -139,7 +141,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
       {offers.length > 0 && (
         <section className="mx-auto max-w-6xl px-6 py-16">
           <div className="grid gap-4 md:grid-cols-3">
-            {offers.slice(0, 6).map((offer: any, index: number) => (
+            {offers.slice(0, 6).map((offer: Offer, index: number) => (
               <div
                 key={index}
                 className="rounded-3xl border border-white/10 bg-white/[0.06] p-6 backdrop-blur"
@@ -184,10 +186,10 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
             </div>
 
             <div className="space-y-16">
-              {menu.map((cat: any, index: number) => {
+              {menu.map((cat: MenuCategory, index: number) => {
                 const items = cat.items || [];
-                const imageItems = items.filter((item: any) => item.image);
-                const textItems = items.filter((item: any) => !item.image);
+                const imageItems = items.filter((item: MenuItem) => item.image);
+                const textItems = items.filter((item: MenuItem) => !item.image);
 
                 return (
                   <div key={index}>
@@ -198,7 +200,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
                     {imageItems.length > 0 && (
                       <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {imageItems.map((item: any, i: number) => (
+                        {imageItems.map((item: MenuItem, i: number) => (
                           <div
                             key={i}
                             className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06]"
@@ -233,7 +235,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
                     {textItems.length > 0 && (
                       <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 md:p-8">
                         <div className="space-y-5">
-                          {textItems.map((item: any, i: number) => (
+                          {textItems.map((item: MenuItem, i: number) => (
                             <div
                               key={i}
                               className="border-b border-white/10 pb-4 last:border-0"
@@ -342,7 +344,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           {restaurant.phone && (
             <a
-              href={`tel:${restaurant.phone}`}
+              href={phoneUrl(restaurant.phone)}
               className="rounded-full bg-white px-7 py-4 font-black text-black"
             >
               Call Now
@@ -351,7 +353,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
           {restaurant.whatsapp && (
             <a
-              href={`https://wa.me/${restaurant.whatsapp}`}
+              href={whatsappUrl(restaurant.whatsapp)}
               target="_blank"
               rel="noreferrer"
               className="rounded-full bg-green-500 px-7 py-4 font-black text-white"
@@ -362,7 +364,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
           {restaurant.website && (
             <a
-              href={restaurant.website}
+              href={websiteUrl(restaurant.website)}
               target="_blank"
               rel="noreferrer"
               className="rounded-full border border-white/20 px-7 py-4 font-black"
@@ -375,17 +377,17 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
         <div className="mt-10 flex justify-center gap-5 text-2xl text-white/70">
           {restaurant.social?.instagram && (
-            <a href={restaurant.social.instagram} target="_blank" rel="noreferrer">
+            <a href={instagramUrl(restaurant.social.instagram)} target="_blank" rel="noreferrer">
               <FaInstagram />
             </a>
           )}
           {restaurant.social?.facebook && (
-            <a href={restaurant.social.facebook} target="_blank" rel="noreferrer">
+            <a href={facebookUrl(restaurant.social.facebook)} target="_blank" rel="noreferrer">
               <FaFacebook />
             </a>
           )}
           {restaurant.social?.tiktok && (
-            <a href={restaurant.social.tiktok} target="_blank" rel="noreferrer">
+            <a href={tiktokUrl(restaurant.social.tiktok)} target="_blank" rel="noreferrer">
               <FaTiktok />
             </a>
           )}

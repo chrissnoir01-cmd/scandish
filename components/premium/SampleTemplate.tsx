@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Clock,
   Globe,
-  MapPin,
   Phone,
   Share2,
   Star,
@@ -17,11 +16,13 @@ import {
   X,
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
+import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
+import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
-export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
-  const menu = restaurant.menu || [];
-  const gallery = restaurant.gallery || [];
-  const offers = restaurant.offers || [];
+export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
+  const menu = restaurant.menu;
+  const gallery = restaurant.gallery;
+  const offers = restaurant.offers;
 
   // UI States
   const [activeCategory, setActiveCategory] = useState(menu[0]?.category || "");
@@ -34,13 +35,13 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
   // Search logic: Filters items across all categories
   const filteredMenu = useMemo(() => {
     if (!searchQuery) return menu;
-    return menu.map((cat: any) => ({
+    return menu.map((cat: MenuCategory) => ({
       ...cat,
-      items: cat.items.filter((item: any) =>
+      items: cat.items.filter((item: MenuItem) =>
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
       )
-    })).filter((cat: any) => cat.items.length > 0);
+    })).filter((cat: MenuCategory) => cat.items.length > 0);
   }, [menu, searchQuery]);
 
   const sharePage = async () => {
@@ -114,7 +115,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
           <div className="mt-10 md:mt-12 flex flex-wrap justify-center gap-4 relative z-30">
             {restaurant.phone && (
               <a
-                href={`tel:${restaurant.phone}`}
+                href={phoneUrl(restaurant.phone)}
                 className="bg-red-900 border border-red-900 px-6 md:px-10 py-3 md:py-4 text-xs md:text-sm font-bold uppercase tracking-widest text-white transition-all active:scale-95 shadow-xl"
               >
                 Reserve a Table
@@ -138,7 +139,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
       {offers.length > 0 && (
         <section className="relative z-20 -mt-16 mx-auto max-w-6xl px-4 md:px-6">
           <div className="grid gap-px bg-zinc-200 shadow-2xl sm:grid-cols-3 overflow-hidden rounded-sm">
-            {offers.slice(0, 3).map((offer: any, index: number) => (
+            {offers.slice(0, 3).map((offer: Offer, index: number) => (
               <div
                 key={index}
                 className="group bg-white p-8 md:p-12 text-center transition-colors hover:bg-zinc-50"
@@ -200,7 +201,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
               ].map((mode) => (
                 <button 
                   key={mode.id}
-                  onClick={() => setViewMode(mode.id as any)}
+                  onClick={() => setViewMode(mode.id as "bar" | "card" | "square")}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all ${viewMode === mode.id ? 'bg-red-900 text-white shadow-lg' : 'text-zinc-400 hover:text-zinc-600'}`}
                 >
                   <mode.icon size={16} />
@@ -214,7 +215,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
           {!searchQuery && (
             <div className="no-scrollbar flex w-full overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
                 <div className="flex items-center gap-6 md:gap-10 border-t border-zinc-50 pt-3 mx-auto">
-                {menu.map((cat: any) => (
+                {menu.map((cat: MenuCategory) => (
                     <button
                     key={cat.category}
                     onClick={() => setActiveCategory(cat.category)}
@@ -238,10 +239,10 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
         <div className="mx-auto max-w-6xl">
           {filteredMenu.length === 0 ? (
             <div className="text-center py-20">
-                <p className="font-serif text-xl text-zinc-400 italic">No matches found for "{searchQuery}"</p>
+                <p className="font-serif text-xl text-zinc-400 italic">No matches found for &ldquo;{searchQuery}&rdquo;</p>
             </div>
           ) : (
-            filteredMenu.filter((cat: any) => searchQuery || cat.category === activeCategory).map((cat: any, index: number) => (
+            filteredMenu.filter((cat: MenuCategory) => searchQuery || cat.category === activeCategory).map((cat: MenuCategory, index: number) => (
                 <div key={index} className="mb-16 md:mb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
                   
                   <div className="mb-8 md:mb-12 text-center">
@@ -253,7 +254,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
                   {/* VIEW: BAR (Classic Menu List with Images) */}
                   {viewMode === "bar" && (
                     <div className="mx-auto max-w-4xl space-y-6">
-                      {cat.items.map((item: any, i: number) => (
+                      {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="flex items-start md:items-center gap-4 group border-b border-zinc-200 pb-6 last:border-0 transition-colors">
                           {item.image && (
                             <div className="h-16 w-16 md:h-20 md:w-20 flex-shrink-0 overflow-hidden rounded-full border border-zinc-200 bg-white shadow-sm">
@@ -280,7 +281,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
                   {/* VIEW: CARD (Modern Luxury Grid) */}
                   {viewMode === "card" && (
                     <div className="grid gap-6 md:gap-10 sm:grid-cols-2">
-                      {cat.items.map((item: any, i: number) => (
+                      {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="flex flex-col bg-white border border-zinc-100 p-3 md:p-4 shadow-sm transition-all hover:shadow-xl group">
                           {item.image && (
                             <div className="aspect-[16/9] overflow-hidden mb-4">
@@ -312,7 +313,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
                   {/* VIEW: SQUARE (No-Description Visual Grid) */}
                   {viewMode === "square" && (
                     <div className="grid gap-3 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                       {cat.items.map((item: any, i: number) => (
+                       {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="relative aspect-square overflow-hidden group bg-white border border-zinc-100 shadow-sm transition-all hover:-translate-y-1">
                           {item.image ? (
                             <img
@@ -383,7 +384,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
               <div className="mt-8 md:mt-12 flex flex-col gap-5 md:gap-6">
                 {restaurant.phone && (
-                    <a href={`tel:${restaurant.phone}`} className="flex items-center gap-4 group">
+                    <a href={phoneUrl(restaurant.phone)} className="flex items-center gap-4 group">
                         <Phone className="h-5 w-5 text-red-900 group-hover:scale-110 transition-transform" />
                         <span className="font-medium text-sm md:text-base">{restaurant.phone}</span>
                     </a>
@@ -427,7 +428,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
             <div className="mt-10 md:mt-12 flex flex-col sm:flex-row justify-center gap-4">
             {restaurant.whatsapp && (
                 <a
-                href={`https://wa.me/${restaurant.whatsapp}`}
+                href={whatsappUrl(restaurant.whatsapp)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center gap-2 border border-zinc-200 px-8 py-4 text-[10px] md:text-xs font-bold uppercase tracking-widest text-zinc-900 transition-all hover:bg-zinc-900 hover:text-white"
@@ -439,7 +440,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
             {restaurant.website && (
                 <a
-                href={restaurant.website}
+                href={websiteUrl(restaurant.website)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center gap-2 bg-red-900 px-8 py-4 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white transition-colors hover:bg-red-950"
@@ -452,17 +453,17 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: any }) {
 
             <div className="mt-16 flex justify-center gap-8 md:gap-10 text-xl md:text-2xl text-zinc-400">
             {restaurant.social?.instagram && (
-                <a href={restaurant.social.instagram} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
+                <a href={instagramUrl(restaurant.social.instagram)} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
                 <FaInstagram />
                 </a>
             )}
             {restaurant.social?.facebook && (
-                <a href={restaurant.social.facebook} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
+                <a href={facebookUrl(restaurant.social.facebook)} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
                 <FaFacebook />
                 </a>
             )}
             {restaurant.social?.tiktok && (
-                <a href={restaurant.social.tiktok} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
+                <a href={tiktokUrl(restaurant.social.tiktok)} target="_blank" rel="noreferrer" className="hover:text-red-900 transition-colors">
                 <FaTiktok />
                 </a>
             )}

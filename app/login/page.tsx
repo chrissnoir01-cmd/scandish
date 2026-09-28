@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 
 const BRAND = "#f08c6c";
 
@@ -17,6 +17,22 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
+
+  const resetPassword = async () => {
+    setInfoMessage("");
+    if (!email) {
+      setErrorMessage("Enter your email above, then click “Forgot password?”.");
+      return;
+    }
+    setErrorMessage("");
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+    } catch {
+      // Same message either way so the form can't reveal which emails have accounts.
+    }
+    setInfoMessage("If an account exists for this email, a reset link has been sent.");
+  };
 
   const login = async () => {
     if (!email || !password) {
@@ -117,7 +133,8 @@ export default function LoginPage() {
                     type="email"
                     placeholder="you@example.com"
                     className="w-full rounded-2xl border border-[#edd4cb] px-4 py-3 outline-none focus:ring-2 focus:border-transparent"
-                    style={{ ["--tw-ring-color" as any]: BRAND }}
+                    style={{ "--tw-ring-color": BRAND } as React.CSSProperties}
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -129,7 +146,8 @@ export default function LoginPage() {
                     type="password"
                     placeholder="Enter your password"
                     className="w-full rounded-2xl border border-[#edd4cb] px-4 py-3 outline-none focus:ring-2 focus:border-transparent"
-                    style={{ ["--tw-ring-color" as any]: BRAND }}
+                    style={{ "--tw-ring-color": BRAND } as React.CSSProperties}
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={(e) => {
@@ -138,9 +156,26 @@ export default function LoginPage() {
                   />
                 </div>
 
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={resetPassword}
+                    className="text-sm font-semibold"
+                    style={{ color: BRAND }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
                 {errorMessage && (
                   <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
                     {errorMessage}
+                  </div>
+                )}
+
+                {infoMessage && (
+                  <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+                    {infoMessage}
                   </div>
                 )}
 

@@ -3,9 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://scandish.online"),
-  alternates: {
-  canonical: "https://scandish.online",
-},
+  // Canonical URLs are set per page; a layout-level one would mark every page as a homepage duplicate.
   title: {
     default: "ScanDish | Smart QR Menu Platform for Restaurants",
     template: "%s | ScanDish",
@@ -114,25 +112,14 @@ export default function RootLayout({
     logo: "https://scandish.online/images/logo.jpg",
     description:
       "ScanDish helps restaurants create smart QR-powered digital menu pages with menu management, gallery, offers, contact links, and map directions.",
+    // Keep in sync with the pricing section in components/landing/LandingPage.tsx.
     offers: [
-      {
-        "@type": "Offer",
-        name: "6 Months Plan",
-        price: "35000",
-        priceCurrency: "RWF",
-      },
-      {
-        "@type": "Offer",
-        name: "1 Year Plan",
-        price: "60000",
-        priceCurrency: "RWF",
-      },
-      {
-        "@type": "Offer",
-        name: "One-time Restaurant Setup",
-        price: "15000",
-        priceCurrency: "RWF",
-      },
+      { "@type": "Offer", name: "Standard – One-time Setup", price: "20000", priceCurrency: "RWF" },
+      { "@type": "Offer", name: "Standard – 6 Months", price: "72000", priceCurrency: "RWF" },
+      { "@type": "Offer", name: "Standard – 1 Year", price: "144000", priceCurrency: "RWF" },
+      { "@type": "Offer", name: "Premium – One-time Setup", price: "80000", priceCurrency: "RWF" },
+      { "@type": "Offer", name: "Premium – 6 Months", price: "90000", priceCurrency: "RWF" },
+      { "@type": "Offer", name: "Premium – 1 Year", price: "180000", priceCurrency: "RWF" },
     ],
   };
 

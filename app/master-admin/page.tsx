@@ -1,316 +1,151 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../../lib/firebase";
-import { onAuthStateChanged, User, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { auth, getIdToken, uploadFile } from "../../lib/firebase";
 import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  where,
-} from "firebase/firestore";
+  createCompany as createCompanyAction,
+  deleteCompany as deleteCompanyAction,
+  listCompanies,
+  renewSubscription as renewAction,
+  setCompanyStatus,
+  updatePremium,
+  type NewCompanyInput,
+} from "../actions/admin";
+import { daysRemaining as getDaysRemaining } from "../../lib/subscription";
+import type { Company, Plan, PremiumTemplate } from "../../lib/types";
 
 const BRAND = "#f08c6c";
-const MASTER_ADMIN_EMAIL = "admin@scandish.com";
+
+const EMPTY_FORM: NewCompanyInput = {
+  companyName: "",
+  managerName: "",
+  phone: "",
+  email: "",
+  location: "",
+  certificateNumber: "",
+  certificateUrl: "",
+  businessType: "Restaurant",
+  subscriptionStart: "",
+  subscriptionEnd: "",
+  notes: "",
+};
 
 export default function MasterAdminPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
+  const [form, setForm] = useState<NewCompanyInput>(EMPTY_FORM);
   const [creatingCompany, setCreatingCompany] = useState(false);
-  const [companyName, setCompanyName] = useState("");
-  const [managerName, setManagerName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [location, setLocation] = useState("");
-  const [certificateNumber, setCertificateNumber] = useState("");
-  const [businessType, setBusinessType] = useState("Restaurant");
-  const [subscriptionStart, setSubscriptionStart] = useState("");
-  const [subscriptionEnd, setSubscriptionEnd] = useState("");
-  const [notes, setNotes] = useState("");
-  const [certificateUrl, setCertificateUrl] = useState("");
+  const [createdInvite, setCreatedInvite] = useState<{ code: string; name: string } | null>(null);
   const [uploadingCertificate, setUploadingCertificate] = useState(false);
-  const [confirmStatusCompany, setConfirmStatusCompany] = useState<any | null>(null);
-  const [confirmDeleteCompany, setConfirmDeleteCompany] = useState<any | null>(null);
+
+  const [confirmStatusCompany, setConfirmStatusCompany] = useState<Company | null>(null);
+  const [confirmDeleteCompany, setConfirmDeleteCompany] = useState<Company | null>(null);
   const [deleteText, setDeleteText] = useState("");
-  const [renewCompany, setRenewCompany] = useState<any | null>(null);
-  const [renewDays, setRenewDays] = useState(180); // default 6 months
+  const [renewCompany, setRenewCompany] = useState<Company | null>(null);
+  const [renewDays, setRenewDays] = useState(180);
+  const [busy, setBusy] = useState(false);
 
-useEffect(() => {
-  const unsub = onAuthStateChanged(auth, async (currentUser) => {
-    if (!currentUser) {
-      router.replace("/secure-access-9xk3-admin");
-      return;
+  const loadCompanies = useCallback(async () => {
+    const res = await listCompanies(await getIdToken());
+    if (res.ok) {
+      setCompanies(res.data);
+      setError("");
+    } else {
+      setError(res.error);
     }
+  }, []);
 
-    const userRef = doc(db, "users", currentUser.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists() || userSnap.data().role !== "admin") {
-      router.replace("/dashboard");
-      return;
-    }
-
-    setUser(currentUser);
-    setChecking(false);
-  });
-
-  return () => unsub();
-}, [router]);
-
-useEffect(() => {
-  if (user) {
-    loadCompanies();
-  }
-}, [user]);
-  const loadCompanies = async () => {
-    const snap = await getDocs(collection(db, "companies"));
-    const list = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
-    setCompanies(list);
-  };
-
-  
-
-  const generateInviteCode = () => {
-    const random = Math.floor(100000 + Math.random() * 900000);
-    return `SCANDISH-${random}`;
-  };
-
-  const getDaysRemaining = (endDate: string) => {
-    if (!endDate) return 0;
-
-    const today = new Date();
-    const end = new Date(endDate);
-    const diff = end.getTime() - today.getTime();
-
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
-
-  const createCompany = async () => {
-  if (creatingCompany) return;
-
-  if (!companyName || !managerName || !phone) {
-    alert("Company name, manager name, and phone are required");
-    return;
-  }
-
-  try {
-    setCreatingCompany(true);
-
-    // 🔒 PREVENT DUPLICATE BY EMAIL
-    if (email) {
-      const existing = await getDocs(
-        query(collection(db, "companies"), where("email", "==", email))
-      );
-
-      if (!existing.empty) {
-        alert("Company with this email already exists.");
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        router.replace("/secure-access-9xk3-admin");
         return;
       }
+      const token = await currentUser.getIdTokenResult();
+      if (token.claims.admin !== true) {
+        router.replace("/dashboard");
+        return;
+      }
+      setUser(currentUser);
+      setChecking(false);
+      loadCompanies();
+    });
+    return () => unsub();
+  }, [router, loadCompanies]);
+
+  /** Runs an admin action, reports its error, and reloads the list on success. */
+  const run = async (action: (token: string) => Promise<{ ok: boolean; error?: string }>) => {
+    setBusy(true);
+    try {
+      const res = await action(await getIdToken());
+      if (!res.ok) {
+        alert(res.error);
+        return false;
+      }
+      await loadCompanies();
+      return true;
+    } finally {
+      setBusy(false);
     }
-
-    const inviteCode = generateInviteCode();
-    const companyRef = doc(collection(db, "companies"));
-
-    await setDoc(companyRef, {
-      companyName,
-      managerName,
-      phone,
-      email,
-      location,
-      certificateNumber,
-      businessType,
-      subscriptionStart,
-      subscriptionEnd,
-      notes,
-      status: "inactive",
-      ownerUid: "",
-      inviteCode,
-      inviteUsed: false,
-      logo: "",
-      certificateUrl,
-      slug: companyName
-       .toLowerCase()
-       .trim()
-       .replace(/[^a-z0-9]+/g, "-")
-       .replace(/(^-|-$)/g, ""),
-
-      plan: "standard",
-
-      premiumEnabled: false,
-
-      premiumTemplate: "default",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    alert(`Company created.\nInvite Code: ${inviteCode}`);
-
-    // reset
-    setCompanyName("");
-    setManagerName("");
-    setPhone("");
-    setEmail("");
-    setLocation("");
-
-    loadCompanies();
-  } catch (e) {
-    console.error(e);
-    alert("Failed to create company");
-  } finally {
-    setCreatingCompany(false);
-  }
-};
-
-  const logout = async () => {
-  await signOut(auth);
-  router.replace("/secure-access-9xk3-admin"); // back to hidden admin login
-};
-
-  const updateCompanyStatus = async (id: string, status: string) => {
-    await updateDoc(doc(db, "companies", id), {
-      status,
-      updatedAt: new Date().toISOString(),
-    });
-
-    loadCompanies();
   };
 
-  const deleteCompany = async (id: string) => {
-  if (deleteText !== "DELETE") {
-    alert("Type DELETE to confirm.");
-    return;
-  }
+  const setField = (key: keyof NewCompanyInput) => (value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
-  await deleteDoc(doc(db, "companies", id));
-  setConfirmDeleteCompany(null);
-  setDeleteText("");
-  loadCompanies();
-};
-
-const renewSubscription = async () => {
-
-  if (!renewCompany) return;
-
-  const today = new Date();
-  const currentEnd = renewCompany.subscriptionEnd
-    ? new Date(renewCompany.subscriptionEnd)
-    : today;
-
-  const baseDate = currentEnd > today ? currentEnd : today;
-
-  const newEnd = new Date(baseDate);
-  newEnd.setDate(newEnd.getDate() + Number(renewDays));
-
-  await updateDoc(doc(db, "companies", renewCompany.id), {
-    subscriptionEnd: newEnd.toISOString(),
-    status: "active",
-    updatedAt: new Date().toISOString(),
-  });
-
-  setRenewCompany(null);
-  loadCompanies();
-};
-
-const updatePremiumField = async (
-  company: any,
-  field: "plan" | "premiumEnabled" | "premiumTemplate",
-  value: any
-) => {
-  try {
-    await updateDoc(doc(db, "companies", company.id), {
-      [field]: value,
-      updatedAt: new Date().toISOString(),
-    });
-
-    if (company.ownerUid) {
-      await updateDoc(doc(db, "restaurants", company.ownerUid), {
-        [field]: value,
-        updatedAt: new Date().toISOString(),
-      });
+  const createCompany = async () => {
+    if (creatingCompany) return;
+    setCreatingCompany(true);
+    try {
+      const res = await createCompanyAction(await getIdToken(), form);
+      if (!res.ok) {
+        alert(res.error);
+        return;
+      }
+      setCreatedInvite({ code: res.data.inviteCode, name: form.companyName });
+      setForm(EMPTY_FORM);
+      await loadCompanies();
+    } finally {
+      setCreatingCompany(false);
     }
+  };
 
-    loadCompanies();
-  } catch (error) {
-    console.error(error);
-    alert("Premium update failed");
-  }
-};
-
-  const uploadFileToCloudinary = async (file: File) => {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error || "Upload failed");
-  }
-
-  return data.url as string;
-};
+  const logout = async () => {
+    await signOut(auth);
+    router.replace("/secure-access-9xk3-admin");
+  };
 
   const filteredCompanies = useMemo(() => {
     const q = search.toLowerCase();
-
-    return companies.filter((c) => {
-      return (
-        c.companyName?.toLowerCase().includes(q) ||
-        c.managerName?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q) ||
-        c.phone?.toLowerCase().includes(q) ||
-        c.location?.toLowerCase().includes(q) ||
-        c.status?.toLowerCase().includes(q)
-      );
-    });
+    return companies.filter((c) =>
+      [c.companyName, c.managerName, c.email, c.phone, c.location, c.status, c.slug].some((v) =>
+        v.toLowerCase().includes(q)
+      )
+    );
   }, [companies, search]);
 
-  const totalCompanies = companies.length;
-  const activeCompanies = companies.filter((c) => c.status === "active").length;
-  const inactiveCompanies = companies.filter((c) => c.status === "inactive").length;
-  const expiredCompanies = companies.filter(
-    (c) => getDaysRemaining(c.subscriptionEnd) < 1 && c.subscriptionEnd
-  ).length;
-  const expiringSoon = companies.filter((c) => {
-    const days = getDaysRemaining(c.subscriptionEnd);
-    return days > 0 && days <= 5;
-  }).length;
+  const stats = useMemo(() => {
+    const days = companies.map((c) => getDaysRemaining(c.subscriptionEnd));
+    return [
+      ["Total Companies", companies.length],
+      ["Active", companies.filter((c) => c.status === "active").length],
+      ["Inactive", companies.filter((c) => c.status === "inactive").length],
+      ["Expired", days.filter((d) => d !== null && d < 1).length],
+      ["Expiring Soon", days.filter((d) => d !== null && d > 0 && d <= 5).length],
+    ] as const;
+  }, [companies]);
 
-  if (checking) {
+  if (checking || !user) {
     return (
       <main className="min-h-screen bg-[#fff8f5] flex items-center justify-center">
         <p>Checking access...</p>
-      </main>
-    );
-  }
-
-  if (!user || user.email !== MASTER_ADMIN_EMAIL) {
-    return (
-      <main className="min-h-screen bg-[#fff8f5] flex items-center justify-center px-6">
-        <div className="bg-white border rounded-3xl p-8 text-center max-w-md">
-          <h1 className="text-2xl font-bold">Access denied</h1>
-          <p className="text-gray-500 mt-3">
-            This page is only for ScanDish MasterAdmin.
-          </p>
-        </div>
       </main>
     );
   }
@@ -326,28 +161,22 @@ const updatePremiumField = async (
             <h1 className="text-3xl font-bold">Control Center</h1>
             <p className="text-gray-500 mt-1">Logged in as {user.email}</p>
           </div>
-
-     <button
-  onClick={logout}
-  className="px-5 py-3 rounded-2xl text-white font-semibold bg-red-600 hover:bg-red-700 transition"
->
-  Logout
-</button>
+          <button
+            onClick={logout}
+            className="px-5 py-3 rounded-2xl text-white font-semibold bg-red-600 hover:bg-red-700 transition"
+          >
+            Logout
+          </button>
         </header>
+
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
+        )}
 
         {/* OVERVIEW */}
         <section className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          {[
-            ["Total Companies", totalCompanies],
-            ["Active", activeCompanies],
-            ["Inactive", inactiveCompanies],
-            ["Expired", expiredCompanies],
-            ["Expiring Soon", expiringSoon],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className="bg-white border border-[#f2ddd6] rounded-3xl p-5 shadow-sm"
-            >
+          {stats.map(([label, value]) => (
+            <div key={label} className="bg-white border border-[#f2ddd6] rounded-3xl p-5 shadow-sm">
               <p className="text-sm text-gray-500">{label}</p>
               <p className="text-3xl font-bold mt-2">{value}</p>
             </div>
@@ -360,129 +189,63 @@ const updatePremiumField = async (
             <h2 className="text-xl font-bold mb-4">Create Company Account</h2>
 
             <div className="space-y-3">
-              <input
-                placeholder="Company Name"
-                className="input"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-              />
-
-              <input
-                placeholder="Manager Name"
-                className="input"
-                value={managerName}
-                onChange={(e) => setManagerName(e.target.value)}
-              />
-
-              <input
-                placeholder="Phone Number"
-                className="input"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-
-              <input
-                placeholder="Email"
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-
-              <input
-                placeholder="Location"
-                className="input"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-
-              <input
-                placeholder="Certificate / Registration Number"
-                className="input"
-                value={certificateNumber}
-                onChange={(e) => setCertificateNumber(e.target.value)}
-              />
+              <input placeholder="Company Name *" className="input" value={form.companyName} onChange={(e) => setField("companyName")(e.target.value)} />
+              <input placeholder="Manager Name *" className="input" value={form.managerName} onChange={(e) => setField("managerName")(e.target.value)} />
+              <input placeholder="Phone Number *" className="input" value={form.phone} onChange={(e) => setField("phone")(e.target.value)} />
+              <input type="email" placeholder="Owner Email * (used to sign up)" className="input" value={form.email} onChange={(e) => setField("email")(e.target.value)} />
+              <input placeholder="Location" className="input" value={form.location} onChange={(e) => setField("location")(e.target.value)} />
+              <input placeholder="Certificate / Registration Number" className="input" value={form.certificateNumber} onChange={(e) => setField("certificateNumber")(e.target.value)} />
 
               <div>
-  <label className="text-sm text-gray-500">Certificate Document</label>
-  <input
-    type="file"
-    accept="image/*,.pdf"
-    className="input"
-    onChange={async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+                <label className="text-sm text-gray-500">Certificate Document</label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="input"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setUploadingCertificate(true);
+                    try {
+                      setField("certificateUrl")(await uploadFile(file));
+                    } catch (err) {
+                      alert(err instanceof Error ? err.message : "Certificate upload failed");
+                    } finally {
+                      setUploadingCertificate(false);
+                    }
+                  }}
+                />
+                {uploadingCertificate && <p className="text-sm text-gray-500 mt-1">Uploading certificate...</p>}
+                {form.certificateUrl && (
+                  <a href={form.certificateUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold mt-2 inline-block" style={{ color: BRAND }}>
+                    View uploaded certificate
+                  </a>
+                )}
+              </div>
 
-      try {
-        setUploadingCertificate(true);
-        const url = await uploadFileToCloudinary(file);
-        setCertificateUrl(url);
-      } catch (error) {
-        console.error(error);
-        alert("Certificate upload failed");
-      } finally {
-        setUploadingCertificate(false);
-      }
-    }}
-  />
-
-  {uploadingCertificate && (
-    <p className="text-sm text-gray-500 mt-1">Uploading certificate...</p>
-  )}
-
-  {certificateUrl && (
-    <a
-      href={certificateUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="text-sm font-semibold mt-2 inline-block"
-      style={{ color: BRAND }}
-    >
-      View uploaded certificate
-    </a>
-  )}
-</div>
-
-              <input
-                placeholder="Business Type"
-                className="input"
-                value={businessType}
-                onChange={(e) => setBusinessType(e.target.value)}
-              />
+              <input placeholder="Business Type" className="input" value={form.businessType} onChange={(e) => setField("businessType")(e.target.value)} />
 
               <div>
                 <label className="text-sm text-gray-500">Subscription Start</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={subscriptionStart}
-                  onChange={(e) => setSubscriptionStart(e.target.value)}
-                />
+                <input type="date" className="input" value={form.subscriptionStart} onChange={(e) => setField("subscriptionStart")(e.target.value)} />
               </div>
 
               <div>
                 <label className="text-sm text-gray-500">Subscription End</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={subscriptionEnd}
-                  onChange={(e) => setSubscriptionEnd(e.target.value)}
-                />
+                <input type="date" className="input" value={form.subscriptionEnd} onChange={(e) => setField("subscriptionEnd")(e.target.value)} />
               </div>
 
-              <textarea
-                placeholder="Notes"
-                className="input min-h-24"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
+              <textarea placeholder="Notes" className="input min-h-24" value={form.notes} onChange={(e) => setField("notes")(e.target.value)} />
 
               <button
-  onClick={createCompany}
-  disabled={creatingCompany}
->
-  {creatingCompany ? "Creating..." : "Create Company"}
-</button>
-          
+                onClick={createCompany}
+                disabled={creatingCompany || uploadingCertificate}
+                className="w-full rounded-2xl px-4 py-3 font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: BRAND }}
+              >
+                {creatingCompany ? "Creating..." : "Create Company"}
+              </button>
             </div>
           </div>
 
@@ -491,180 +254,126 @@ const updatePremiumField = async (
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
               <div>
                 <h2 className="text-xl font-bold">Manage Companies</h2>
-                <p className="text-gray-500 text-sm">
-                  Activate, deactivate, search, or delete companies.
-                </p>
+                <p className="text-gray-500 text-sm">Activate, deactivate, search, or delete companies.</p>
               </div>
-
-              <input
-                placeholder="Search company..."
-                className="input md:max-w-xs"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <input placeholder="Search company..." className="input md:max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
 
             <div className="space-y-3">
-              {filteredCompanies.length === 0 && (
-                <p className="text-gray-500">No companies found.</p>
-              )}
+              {filteredCompanies.length === 0 && <p className="text-gray-500">No companies found.</p>}
 
               {filteredCompanies.map((company) => {
-                const daysRemaining = getDaysRemaining(company.subscriptionEnd);
-                const isExpired = company.subscriptionEnd && daysRemaining < 1;
+                const days = getDaysRemaining(company.subscriptionEnd);
+                const isExpired = days !== null && days < 1;
 
                 return (
-                  <div
-                    key={company.id}
-                    className="border border-[#f2ddd6] rounded-3xl p-4 bg-[#fffdfb]"
-                  >
+                  <div key={company.id} className="border border-[#f2ddd6] rounded-3xl p-4 bg-[#fffdfb]">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
-                        <h3 className="text-lg font-bold">
-                          {company.companyName}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          Manager: {company.managerName}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Phone: {company.phone}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Email: {company.email || "No email"}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Location: {company.location || "No location"}
-                        </p>
+                        <h3 className="text-lg font-bold">{company.companyName}</h3>
+                        <p className="text-sm text-gray-500">Manager: {company.managerName}</p>
+                        <p className="text-sm text-gray-500">Phone: {company.phone}</p>
+                        <p className="text-sm text-gray-500">Email: {company.email || "No email"}</p>
+                        <p className="text-sm text-gray-500">Location: {company.location || "No location"}</p>
+                        <p className="text-sm text-gray-500">Page: /r/{company.slug}</p>
                         <p className="text-sm text-gray-500">
                           Invite Code:{" "}
-                          <span className="font-semibold text-gray-800">
-                            {company.inviteCode}
-                          </span>
+                          <span className="font-semibold text-gray-800">{company.inviteCode}</span>
+                          {company.inviteUsed && <span className="ml-2 text-green-600">(used)</span>}
                         </p>
                       </div>
 
                       <div className="text-sm md:text-right">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 font-semibold ${
-                            company.status === "active"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
+                            company.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                           }`}
                         >
                           {company.status}
                         </span>
-
                         <p className="mt-2 text-gray-500">
                           Days remaining:{" "}
                           <span
                             className={
-                              isExpired
-                                ? "text-red-600 font-bold"
-                                : daysRemaining <= 5
-                                ? "text-orange-600 font-bold"
-                                : "text-green-600 font-bold"
+                              isExpired ? "text-red-600 font-bold" : days !== null && days <= 5 ? "text-orange-600 font-bold" : "text-green-600 font-bold"
                             }
                           >
-                            {company.subscriptionEnd ? daysRemaining : "Not set"}
+                            {days ?? "Not set"}
                           </span>
                         </p>
-                        {company.subscriptionEnd && daysRemaining > 0 && daysRemaining <= 5 && (
-  <p className="mt-2 rounded-xl bg-orange-50 border border-orange-200 px-3 py-2 text-orange-700 font-semibold">
-    ⚠️ Subscription ends in {daysRemaining} day{daysRemaining > 1 ? "s" : ""}
-  </p>
-)}
+                        {days !== null && days > 0 && days <= 5 && (
+                          <p className="mt-2 rounded-xl bg-orange-50 border border-orange-200 px-3 py-2 text-orange-700 font-semibold">
+                            ⚠️ Subscription ends in {days} day{days > 1 ? "s" : ""}
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                 
-               
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-3 rounded-2xl border border-[#f2ddd6] bg-white px-4 py-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={company.status === "active"}
+                          onChange={() => setConfirmStatusCompany(company)}
+                          className="h-5 w-5 accent-[#f08c6c]"
+                        />
+                        <span className="text-sm font-semibold">{company.status === "active" ? "Active" : "Inactive"}</span>
+                      </label>
 
-  <label className="flex items-center gap-3 rounded-2xl border border-[#f2ddd6] bg-white px-4 py-2 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={company.status === "active"}
-      onChange={() => setConfirmStatusCompany(company)}
-      className="h-5 w-5 accent-[#f08c6c]"
-    />
-    <span className="text-sm font-semibold">
-      {company.status === "active" ? "Active" : "Inactive"}
-    </span>
-  </label>
+                      <div className="mt-4 w-full rounded-2xl border border-[#f2ddd6] bg-white p-4">
+                        <p className="mb-3 text-sm font-bold" style={{ color: BRAND }}>Premium Controls</p>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <select
+                            className="input"
+                            disabled={busy}
+                            value={company.plan}
+                            onChange={(e) => run((t) => updatePremium(t, company.id, { plan: e.target.value as Plan }))}
+                          >
+                            <option value="standard">Standard</option>
+                            <option value="premium">Premium</option>
+                          </select>
+                          <select
+                            className="input"
+                            disabled={busy}
+                            value={company.premiumEnabled ? "true" : "false"}
+                            onChange={(e) => run((t) => updatePremium(t, company.id, { premiumEnabled: e.target.value === "true" }))}
+                          >
+                            <option value="false">Premium OFF</option>
+                            <option value="true">Premium ON</option>
+                          </select>
+                          <select
+                            className="input"
+                            disabled={busy}
+                            value={company.premiumTemplate}
+                            onChange={(e) =>
+                              run((t) => updatePremium(t, company.id, { premiumTemplate: e.target.value as PremiumTemplate }))
+                            }
+                          >
+                            <option value="default">Default Template</option>
+                            <option value="camellia">Camellia Template</option>
+                            <option value="sample">Sample Template</option>
+                            <option value="freshy">Freshy Template</option>
+                          </select>
+                        </div>
+                        {company.slug && (
+                          <a
+                            href={`/r/${company.slug}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-block rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+                          >
+                            Open Public Page
+                          </a>
+                        )}
+                      </div>
 
-  <div className="mt-4 w-full rounded-2xl border border-[#f2ddd6] bg-white p-4">
-  <p className="mb-3 text-sm font-bold" style={{ color: BRAND }}>
-    Premium Controls
-  </p>
-
-  <div className="grid gap-3 md:grid-cols-3">
-    <select
-      className="input"
-      value={company.plan || "standard"}
-      onChange={(e) =>
-        updatePremiumField(company, "plan", e.target.value)
-      }
-    >
-      <option value="standard">Standard</option>
-      <option value="premium">Premium</option>
-    </select>
-
-    <select
-      className="input"
-      value={company.premiumEnabled ? "true" : "false"}
-      onChange={(e) =>
-        updatePremiumField(
-          company,
-          "premiumEnabled",
-          e.target.value === "true"
-        )
-      }
-    >
-      <option value="false">Premium OFF</option>
-      <option value="true">Premium ON</option>
-    </select>
-
-    <select
-      className="input"
-      value={company.premiumTemplate || "default"}
-      onChange={(e) =>
-        updatePremiumField(company, "premiumTemplate", e.target.value)
-      }
-    >
-      <option value="default">Default Template</option>
-      <option value="camellia">Camellia Template</option>
-      <option value="sample">Sample Template</option>
-      <option value="freshy">Freshy Template</option>
-    </select>
-  </div>
-
-  {company.plan === "premium" && company.premiumEnabled && (
-    <a
-      href={`/r/${company.slug}/premium`}
-      target="_blank"
-      rel="noreferrer"
-      className="mt-3 inline-block rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
-    >
-      Open Premium Page
-    </a>
-  )}
-</div>
-
-  {/* 🔥 NEW RENEW BUTTON */}
-  <button
-    onClick={() => setRenewCompany(company)}
-    className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold"
-  >
-    Renew
-  </button>
-
-  <button
-    onClick={() => setConfirmDeleteCompany(company)}
-    className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold"
-  >
-    Delete
-  </button>
-</div>
+                      <button onClick={() => setRenewCompany(company)} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold">
+                        Renew
+                      </button>
+                      <button onClick={() => setConfirmDeleteCompany(company)} className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold">
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -682,149 +391,154 @@ const updatePremiumField = async (
           outline: none;
           background: white;
         }
-
         .input:focus {
           border-color: ${BRAND};
           box-shadow: 0 0 0 3px ${BRAND}22;
         }
       `}</style>
 
-        {confirmStatusCompany && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-    <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-      <h2 className="text-xl font-bold">Confirm status change</h2>
+      {createdInvite && (
+        <Dialog title="Company created">
+          <p className="mt-3 text-gray-600">
+            Send this invite code to <span className="font-bold">{createdInvite.name}</span>. The owner must sign up with the email you entered.
+          </p>
+          <p className="mt-4 rounded-2xl bg-[#fff8f5] p-4 text-center font-mono text-2xl font-bold tracking-widest">
+            {createdInvite.code}
+          </p>
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={() => navigator.clipboard?.writeText(createdInvite.code)}
+              className="flex-1 rounded-2xl px-4 py-3 text-white font-semibold"
+              style={{ backgroundColor: BRAND }}
+            >
+              Copy code
+            </button>
+            <button onClick={() => setCreatedInvite(null)} className="flex-1 rounded-2xl border border-[#efd6ce] px-4 py-3 font-semibold">
+              Close
+            </button>
+          </div>
+        </Dialog>
+      )}
 
-      <p className="mt-3 text-gray-600">
-        Are you sure you want to{" "}
-        <span className="font-bold">
-          {confirmStatusCompany.status === "active" ? "deactivate" : "activate"}
-        </span>{" "}
-        {confirmStatusCompany.companyName}?
-      </p>
+      {confirmStatusCompany && (
+        <Dialog title="Confirm status change">
+          <p className="mt-3 text-gray-600">
+            Are you sure you want to{" "}
+            <span className="font-bold">{confirmStatusCompany.status === "active" ? "deactivate" : "activate"}</span>{" "}
+            {confirmStatusCompany.companyName}?
+          </p>
+          <div className="mt-6 flex gap-3">
+            <button
+              disabled={busy}
+              onClick={async () => {
+                const c = confirmStatusCompany;
+                await run((t) => setCompanyStatus(t, c.id, c.status === "active" ? "inactive" : "active"));
+                setConfirmStatusCompany(null);
+              }}
+              className="flex-1 rounded-2xl px-4 py-3 text-white font-semibold disabled:opacity-50"
+              style={{ backgroundColor: BRAND }}
+            >
+              Yes, confirm
+            </button>
+            <button onClick={() => setConfirmStatusCompany(null)} className="flex-1 rounded-2xl border border-[#efd6ce] px-4 py-3 font-semibold">
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
 
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={async () => {
-            await updateCompanyStatus(
-              confirmStatusCompany.id,
-              confirmStatusCompany.status === "active" ? "inactive" : "active"
-            );
-            setConfirmStatusCompany(null);
-          }}
-          className="flex-1 rounded-2xl px-4 py-3 text-white font-semibold"
-          style={{ backgroundColor: BRAND }}
-        >
-          Yes, confirm
-        </button>
+      {confirmDeleteCompany && (
+        <Dialog title="Delete company" danger>
+          <p className="mt-3 text-gray-600">
+            This deletes the company record for <span className="font-bold">{confirmDeleteCompany.companyName}</span> and takes
+            its public page offline. The owner&apos;s menu data is kept.
+          </p>
+          <p className="mt-3 text-sm text-gray-500">
+            Type <span className="font-bold">DELETE</span> to confirm.
+          </p>
+          <input value={deleteText} onChange={(e) => setDeleteText(e.target.value)} placeholder="Type DELETE" className="input mt-4" />
+          <div className="mt-6 flex gap-3">
+            <button
+              disabled={deleteText !== "DELETE" || busy}
+              onClick={async () => {
+                const c = confirmDeleteCompany;
+                if (await run((t) => deleteCompanyAction(t, c.id))) {
+                  setConfirmDeleteCompany(null);
+                  setDeleteText("");
+                }
+              }}
+              className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-white font-semibold disabled:opacity-50"
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => {
+                setConfirmDeleteCompany(null);
+                setDeleteText("");
+              }}
+              className="flex-1 rounded-2xl border border-[#efd6ce] px-4 py-3 font-semibold"
+            >
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
 
-        <button
-          onClick={() => setConfirmStatusCompany(null)}
-          className="flex-1 rounded-2xl border border-[#efd6ce] px-4 py-3 font-semibold"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{confirmDeleteCompany && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-    <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-      <h2 className="text-xl font-bold text-red-600">Delete company</h2>
-
-      <p className="mt-3 text-gray-600">
-        This will delete{" "}
-        <span className="font-bold">{confirmDeleteCompany.companyName}</span>{" "}
-        from ScanDish company records.
-      </p>
-
-      <p className="mt-3 text-sm text-gray-500">
-        Type <span className="font-bold">DELETE</span> to confirm.
-      </p>
-
-      <input
-        value={deleteText}
-        onChange={(e) => setDeleteText(e.target.value)}
-        placeholder="Type DELETE"
-        className="input mt-4"
-      />
-
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={() => deleteCompany(confirmDeleteCompany.id)}
-          className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-white font-semibold disabled:opacity-50"
-          disabled={deleteText !== "DELETE"}
-        >
-          Delete
-        </button>
-
-        <button
-          onClick={() => {
-            setConfirmDeleteCompany(null);
-            setDeleteText("");
-          }}
-          className="flex-1 rounded-2xl border border-[#efd6ce] px-4 py-3 font-semibold"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-{renewCompany && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-    <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-      <h2 className="text-xl font-bold">Renew Subscription</h2>
-
-      <p className="mt-2 text-gray-600">
-        {renewCompany.companyName}
-      </p>
-
-      <div className="mt-4 space-y-3">
-        <button
-          onClick={() => setRenewDays(180)}
-          className="w-full border rounded-xl py-2"
-        >
-          6 Months (180 days)
-        </button>
-
-        <button
-          onClick={() => setRenewDays(365)}
-          className="w-full border rounded-xl py-2"
-        >
-          1 Year (365 days)
-        </button>
-
-        <input
-          type="number"
-          placeholder="Custom days"
-          value={renewDays}
-          onChange={(e) => setRenewDays(Number(e.target.value))}
-          className="input"
-        />
-      </div>
-
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={renewSubscription}
-          className="flex-1 rounded-2xl px-4 py-3 text-white font-semibold"
-          style={{ backgroundColor: BRAND }}
-        >
-          Confirm Renew
-        </button>
-
-        <button
-          onClick={() => setRenewCompany(null)}
-          className="flex-1 rounded-2xl border px-4 py-3"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      {renewCompany && (
+        <Dialog title="Renew Subscription">
+          <p className="mt-2 text-gray-600">{renewCompany.companyName}</p>
+          <div className="mt-4 space-y-3">
+            {[
+              [180, "6 Months (180 days)"],
+              [365, "1 Year (365 days)"],
+            ].map(([d, label]) => (
+              <button
+                key={d}
+                onClick={() => setRenewDays(d as number)}
+                className={`w-full border rounded-xl py-2 ${renewDays === d ? "border-[#f08c6c] font-bold" : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              placeholder="Custom days"
+              value={renewDays}
+              onChange={(e) => setRenewDays(Number(e.target.value))}
+              className="input"
+            />
+          </div>
+          <div className="mt-6 flex gap-3">
+            <button
+              disabled={busy}
+              onClick={async () => {
+                const c = renewCompany;
+                if (await run((t) => renewAction(t, c.id, renewDays))) setRenewCompany(null);
+              }}
+              className="flex-1 rounded-2xl px-4 py-3 text-white font-semibold disabled:opacity-50"
+              style={{ backgroundColor: BRAND }}
+            >
+              Confirm Renew
+            </button>
+            <button onClick={() => setRenewCompany(null)} className="flex-1 rounded-2xl border px-4 py-3">
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
     </main>
+  );
+}
+
+function Dialog({ title, danger, children }: { title: string; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+        <h2 className={`text-xl font-bold ${danger ? "text-red-600" : ""}`}>{title}</h2>
+        {children}
+      </div>
+    </div>
   );
 }

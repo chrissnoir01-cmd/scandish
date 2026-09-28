@@ -14,16 +14,17 @@ import {
   CreditCard,
   LayoutGrid,
   Search,
-  X,
   Leaf,
   ShoppingBag,
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
+import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
+import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
-export default function FreshMarketTemplate({ restaurant }: { restaurant: any }) {
-  const menu = restaurant.menu || [];
-  const gallery = restaurant.gallery || [];
-  const offers = restaurant.offers || [];
+export default function FreshMarketTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
+  const menu = restaurant.menu;
+  const gallery = restaurant.gallery;
+  const offers = restaurant.offers;
 
   const [activeCategory, setActiveCategory] = useState(menu[0]?.category || "");
   const [viewMode, setViewMode] = useState<"bar" | "card" | "square">("card");
@@ -34,13 +35,13 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
 
   const filteredMenu = useMemo(() => {
     if (!searchQuery) return menu;
-    return menu.map((cat: any) => ({
+    return menu.map((cat: MenuCategory) => ({
       ...cat,
-      items: cat.items.filter((item: any) =>
+      items: cat.items.filter((item: MenuItem) =>
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
       )
-    })).filter((cat: any) => cat.items.length > 0);
+    })).filter((cat: MenuCategory) => cat.items.length > 0);
   }, [menu, searchQuery]);
 
   const sharePage = async () => {
@@ -113,7 +114,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
             <div className="mt-8 flex flex-wrap justify-center gap-3">
                 {restaurant.phone && (
                 <a
-                    href={`tel:${restaurant.phone}`}
+                    href={phoneUrl(restaurant.phone)}
                     className="group flex items-center gap-2 rounded-full bg-white px-8 py-4 text-xs font-black uppercase tracking-widest text-green-900 transition-all hover:bg-yellow-400 active:scale-95 shadow-xl"
                 >
                     <ShoppingBag className="h-4 w-4" />
@@ -139,7 +140,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
       {offers.length > 0 && (
         <section className="relative z-20 -mt-10 mx-auto max-w-5xl px-4">
           <div className="grid gap-4 sm:grid-cols-3">
-            {offers.slice(0, 3).map((offer: any, index: number) => (
+            {offers.slice(0, 3).map((offer: Offer, index: number) => (
               <div
                 key={index}
                 className="flex items-center gap-4 bg-yellow-50 border-2 border-yellow-200 p-6 rounded-2xl shadow-sm transition-transform hover:-rotate-1"
@@ -197,7 +198,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
               ].map((mode) => (
                 <button 
                   key={mode.id}
-                  onClick={() => setViewMode(mode.id as any)}
+                  onClick={() => setViewMode(mode.id as "bar" | "card" | "square")}
                   className={`p-2 px-4 rounded-xl transition-all ${viewMode === mode.id ? 'bg-white text-green-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
                 >
                   <mode.icon size={18} />
@@ -208,7 +209,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
 
           {!searchQuery && (
             <div className="no-scrollbar mt-3 flex w-full overflow-x-auto gap-2 pb-1">
-                {menu.map((cat: any) => (
+                {menu.map((cat: MenuCategory) => (
                     <button
                         key={cat.category}
                         onClick={() => setActiveCategory(cat.category)}
@@ -234,7 +235,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
                 <p className="font-bold text-stone-400">No fresh finds match your search.</p>
             </div>
           ) : (
-            filteredMenu.filter((cat: any) => searchQuery || cat.category === activeCategory).map((cat: any, index: number) => (
+            filteredMenu.filter((cat: MenuCategory) => searchQuery || cat.category === activeCategory).map((cat: MenuCategory, index: number) => (
                 <div key={index} className="mb-12 animate-in fade-in zoom-in-95 duration-500">
                   
                   <h3 className="mb-8 text-center text-xl font-black uppercase tracking-[0.3em] text-lime-700 flex items-center justify-center gap-4">
@@ -246,7 +247,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
                   {/* VIEW: BAR (List) */}
                   {viewMode === "bar" && (
                     <div className="grid gap-3">
-                      {cat.items.map((item: any, i: number) => (
+                      {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-stone-100 hover:border-lime-300 transition-colors group">
                           {item.image && (
                             <img src={item.image} className="h-16 w-16 rounded-xl object-cover" alt={item.name} />
@@ -266,7 +267,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
                   {/* VIEW: CARD (Market Grid) */}
                   {viewMode === "card" && (
                     <div className="grid gap-6 sm:grid-cols-2">
-                      {cat.items.map((item: any, i: number) => (
+                      {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="overflow-hidden bg-white rounded-[2rem] border border-stone-100 transition-all hover:shadow-xl hover:shadow-lime-100/50 group">
                           {item.image && (
                             <div className="aspect-[16/10] overflow-hidden m-3 rounded-[1.5rem]">
@@ -290,7 +291,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
                   {/* VIEW: SQUARE (Visual Grid) */}
                   {viewMode === "square" && (
                     <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-                       {cat.items.map((item: any, i: number) => (
+                       {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="group relative aspect-square overflow-hidden rounded-[2rem] bg-white border border-stone-100">
                           {item.image ? (
                             <img src={item.image} alt={item.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
@@ -345,7 +346,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
 
               <div className="mt-10 flex flex-col gap-4">
                 {restaurant.phone && (
-                    <a href={`tel:${restaurant.phone}`} className="flex items-center gap-4 p-4 rounded-2xl bg-stone-50 hover:bg-lime-50 transition-colors group">
+                    <a href={phoneUrl(restaurant.phone)} className="flex items-center gap-4 p-4 rounded-2xl bg-stone-50 hover:bg-lime-50 transition-colors group">
                         <div className="bg-white p-2 rounded-lg shadow-sm group-hover:text-lime-600">
                             <Phone className="h-5 w-5" />
                         </div>
@@ -382,7 +383,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
             <div className="mt-10 flex flex-col sm:flex-row justify-center gap-4">
             {restaurant.whatsapp && (
                 <a
-                href={`https://wa.me/${restaurant.whatsapp}`}
+                href={whatsappUrl(restaurant.whatsapp)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center gap-2 rounded-full bg-green-900 px-8 py-4 text-xs font-black uppercase text-white shadow-lg hover:bg-green-800 transition-all active:scale-95"
@@ -394,7 +395,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
 
             {restaurant.website && (
                 <a
-                href={restaurant.website}
+                href={websiteUrl(restaurant.website)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center gap-2 rounded-full bg-white px-8 py-4 text-xs font-black uppercase text-yellow-950 shadow-lg hover:bg-yellow-50 transition-all active:scale-95"
@@ -407,13 +408,13 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: any })
 
             <div className="mt-12 flex justify-center gap-6 text-2xl text-yellow-950/60">
                 {restaurant.social?.instagram && (
-                    <a href={restaurant.social.instagram} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaInstagram /></a>
+                    <a href={instagramUrl(restaurant.social.instagram)} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaInstagram /></a>
                 )}
                 {restaurant.social?.facebook && (
-                    <a href={restaurant.social.facebook} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaFacebook /></a>
+                    <a href={facebookUrl(restaurant.social.facebook)} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaFacebook /></a>
                 )}
                 {restaurant.social?.tiktok && (
-                    <a href={restaurant.social.tiktok} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaTiktok /></a>
+                    <a href={tiktokUrl(restaurant.social.tiktok)} target="_blank" rel="noreferrer" className="hover:text-yellow-950 transition-colors"><FaTiktok /></a>
                 )}
             </div>
         </div>

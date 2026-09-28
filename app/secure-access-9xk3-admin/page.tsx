@@ -7,7 +7,6 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 
 const BRAND = "#f08c6c";
-const MASTER_ADMIN_EMAIL = "admin@scandish.com";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -27,15 +26,15 @@ export default function AdminLoginPage() {
     setError("");
 
     try {
-     const res = await signInWithEmailAndPassword(auth, email, password);
-
-if (res.user.email !== MASTER_ADMIN_EMAIL) {
-  await auth.signOut();
-  setError("Not authorized as admin");
-  return;
-}
-
-router.push("/master-admin");
+      const res = await signInWithEmailAndPassword(auth, email, password);
+      // The admin claim is set server-side (npm run set-admin); the server re-checks it on every action.
+      const token = await res.user.getIdTokenResult(true);
+      if (token.claims.admin !== true) {
+        await auth.signOut();
+        setError("Not authorized as admin");
+        return;
+      }
+      router.push("/master-admin");
     } catch (err) {
       console.error(err);
       setError("Invalid credentials");

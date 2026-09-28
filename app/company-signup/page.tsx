@@ -2,17 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../../lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from "firebase/firestore";
+import { auth } from "../../lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { claimInvite } from "../actions/signup";
 import Link from "next/link";
 
 const BRAND = "#f08c6c";
@@ -26,106 +18,29 @@ export default function CompanySignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSignup = async () => {
-  if (!email || !inviteCode || !password || !confirmPassword) {
-    alert("Fill all fields");
-    return;
-  }
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !inviteCode || !password || !confirmPassword) {
+      return setError("Please fill in all fields.");
+    }
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    if (password !== confirmPassword) return setError("Passwords do not match.");
 
-  if (password !== confirmPassword) {
-    alert("Passwords do not match");
-    return;
-  }
-
-  try {
+    setError("");
     setLoading(true);
-
-    // 1️⃣ FIND COMPANY BY INVITE ONLY
-    const q = query(
-      collection(db, "companies"),
-      where("inviteCode", "==", inviteCode.trim())
-    );
-
-    const snap = await getDocs(q);
-
-    if (snap.empty) {
-      alert("Invalid invite code");
-      return;
+    try {
+      const res = await claimInvite({ email, inviteCode, password });
+      if (!res.ok) return setError(res.error);
+      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      router.push("/dashboard");
+    } catch {
+      setError("Signup failed. Check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-
-    const companyDoc = snap.docs[0];
-    const company = companyDoc.data();
-
-    if (company.inviteUsed) {
-      alert("Invite already used");
-      return;
-    }
-
-    // 2️⃣ CREATE AUTH USER
-    const userCredential = await createUserWithEmailAndPassword(
-      auth,
-      email.trim().toLowerCase(),
-      password
-    );
-
-    const user = userCredential.user;
-
-    // 3️⃣ CREATE USER ROLE
-    await setDoc(doc(db, "users", user.uid), {
-      email: user.email,
-      role: "restaurant",
-      createdAt: new Date().toISOString(),
-    });
-
-    // 4️⃣ CREATE RESTAURANT (IMPORTANT)
-    const slug = company.companyName
-      ?.toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
-
-    await setDoc(doc(db, "restaurants", user.uid), {
-      ownerUid: user.uid,
-      companyId: companyDoc.id,
-
-      name: company.companyName,
-      slug: slug,
-
-      phone: company.phone,
-      location: company.location,
-
-      plan: "standard",
-      premiumEnabled: false,
-      premiumTemplate: "default",
-
-      status: company.status,
-
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    // 5️⃣ UPDATE COMPANY
-    await updateDoc(doc(db, "companies", companyDoc.id), {
-      ownerUid: user.uid,
-      inviteUsed: true,
-    });
-
-    // ✅ SUCCESS
-    alert("Account created successfully!");
-    router.push("/dashboard");
-
-  } catch (error: any) {
-    console.error(error);
-
-    if (error.code === "auth/email-already-in-use") {
-      alert("Email already exists. Try login.");
-    } else {
-      alert("Signup failed. Try again.");
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <main className="min-h-screen bg-[#fff8f5] flex items-center justify-center px-4">
@@ -140,9 +55,10 @@ export default function CompanySignupPage() {
           </p>
         </div>
 
-        <div className="space-y-3">
+        <form onSubmit={handleSignup} className="space-y-3">
           <input
             type="email"
+            autoComplete="email"
             placeholder="Company Email"
             className="input"
             value={email}
@@ -158,7 +74,8 @@ export default function CompanySignupPage() {
 
           <input
             type="password"
-            placeholder="New Password"
+            autoComplete="new-password"
+            placeholder="New Password (min. 8 characters)"
             className="input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -166,21 +83,28 @@ export default function CompanySignupPage() {
 
           <input
             type="password"
+            autoComplete="new-password"
             placeholder="Confirm Password"
             className="input"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
 
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
           <button
-            onClick={handleSignup}
+            type="submit"
             disabled={loading}
             className="w-full rounded-2xl px-5 py-3 text-white font-semibold disabled:opacity-60"
             style={{ backgroundColor: BRAND }}
           >
             {loading ? "Creating account..." : "Create Account"}
           </button>
-        </div>
+        </form>
 
         <p className="text-center text-sm text-gray-500 mt-5">
           Already created password?{" "}
