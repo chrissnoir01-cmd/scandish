@@ -154,14 +154,50 @@ export async function getDashboardData(uid: string): Promise<DashboardData | nul
   return { ...toContent(data), slug: s(data.slug), plan: toPlan(data.plan), subscription };
 }
 
+const SECTION_LABELS: Record<keyof RestaurantContent, string> = {
+  name: "name",
+  description: "slogan",
+  about: "about",
+  logo: "logo",
+  coverImage: "cover photo",
+  phone: "phone",
+  whatsapp: "WhatsApp",
+  website: "website",
+  location: "address",
+  social: "social links",
+  theme: "colors",
+  menu: "menu",
+  gallery: "gallery",
+  offers: "offers",
+};
+
+const itemCount = (menu: MenuCategory[]) => menu.reduce((n, c) => n + c.items.length, 0);
+
+/** Human-readable list of what changed, e.g. ["menu (12 → 14 items)", "gallery"]. */
+function describeChanges(before: RestaurantContent, after: RestaurantContent): string[] {
+  return (Object.keys(SECTION_LABELS) as (keyof RestaurantContent)[])
+    .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+    .map((k) => {
+      if (k === "menu") {
+        const [a, b] = [itemCount(before.menu), itemCount(after.menu)];
+        return a === b ? "menu" : `menu (${a} → ${b} items)`;
+      }
+      return SECTION_LABELS[k];
+    });
+}
+
 /** Writes only owner-editable fields; plan, slug and company links are untouchable here. */
-export async function saveRestaurantContent(uid: string, content: RestaurantContent): Promise<string> {
+export async function saveRestaurantContent(
+  uid: string,
+  content: RestaurantContent
+): Promise<{ slug: string; name: string; changes: string[] }> {
   const ref = adminDb().collection("restaurants").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Restaurant not found");
 
+  const changes = describeChanges(toContent(snap.data() as Doc), content);
   await ref.set({ ...content, updatedAt: new Date().toISOString() }, { merge: true });
   const slug = s(snap.get("slug"));
   revalidateRestaurant(slug);
-  return slug;
+  return { slug, name: content.name, changes };
 }

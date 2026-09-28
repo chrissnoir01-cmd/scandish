@@ -1,6 +1,7 @@
 import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
 import { NextResponse } from "next/server";
 import { AuthError, bearerToken, requireUser } from "@/lib/server/auth";
+import { logActivity } from "@/lib/server/activity";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -48,6 +49,12 @@ export async function POST(req: Request) {
         .end(buffer);
     });
 
+    await logActivity({
+      type: "restaurant.upload",
+      message: `${user.email ?? user.uid} uploaded ${isPdf ? "a PDF" : "an image"} (${Math.round(file.size / 1024)} KB)`,
+      actor: { uid: user.uid, email: user.email },
+      meta: { bytes: file.size, type: file.type, url: result.secure_url },
+    });
     return NextResponse.json({ url: result.secure_url });
   } catch (error) {
     if (error instanceof AuthError) {

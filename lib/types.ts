@@ -98,6 +98,70 @@ export interface Company {
   updatedAt: string;
 }
 
+export type ActivityCategory = "auth" | "restaurant" | "admin" | "security";
+
+export type ActivityType =
+  | "auth.login"
+  | "auth.login_failed"
+  | "auth.admin_login"
+  | "auth.signup"
+  | "auth.signup_failed"
+  | "restaurant.saved"
+  | "restaurant.upload"
+  | "admin.company_created"
+  | "admin.status_changed"
+  | "admin.renewed"
+  | "admin.premium_changed"
+  | "admin.company_deleted"
+  | "security.unauthorized";
+
+export interface ActivityEvent {
+  id: string;
+  type: ActivityType;
+  category: ActivityCategory;
+  message: string;
+  actorEmail: string;
+  targetKind: string;
+  targetName: string;
+  meta: Record<string, string | number | boolean>;
+  ip: string;
+  device: string;
+  createdAt: string;
+}
+
+/** A login account as the admin sees it (from Firebase Auth + Firestore). */
+export interface AccountSummary {
+  uid: string;
+  email: string;
+  role: "admin" | "restaurant" | "unknown";
+  restaurantName: string;
+  slug: string;
+  emailVerified: boolean;
+  disabled: boolean;
+  createdAt: string;
+  lastSignInAt: string;
+  lastActiveAt: string;
+}
+
+export interface DailyViews {
+  date: string; // YYYY-MM-DD, Kigali time
+  views: number;
+  unique: number;
+}
+
+export interface Analytics {
+  days: DailyViews[]; // oldest → newest, last 30 days, zero-filled
+  today: number;
+  last7: number;
+  prev7: number;
+  last30: number;
+  unique7: number;
+  sources: { qr: number; direct: number; link: number }; // last 30 days
+  devices: { mobile: number; tablet: number; desktop: number }; // last 30 days
+  hours: number[]; // 24 buckets, last 30 days, Kigali time
+  allTime: number;
+}
+
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };

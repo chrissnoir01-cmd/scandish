@@ -1,6 +1,8 @@
 "use server";
 
+import { logActivity } from "@/lib/server/activity";
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
+import { TERMS_VERSION } from "@/lib/brand";
 import { fail } from "@/lib/server/result";
 import { ValidationError } from "@/lib/server/validate";
 import type { ActionResult } from "@/lib/types";
@@ -16,12 +18,16 @@ export async function claimInvite(input: {
   email: string;
   inviteCode: string;
   password: string;
+  acceptedTerms: boolean;
 }): Promise<ActionResult> {
   const email = String(input.email ?? "").trim().toLowerCase();
   const inviteCode = String(input.inviteCode ?? "").trim().toUpperCase();
   const password = String(input.password ?? "");
 
   try {
+    if (input.acceptedTerms !== true) {
+      throw new ValidationError("Please accept the Terms of Service and Privacy Policy");
+    }
     if (!EMAIL.test(email)) throw new ValidationError("Enter a valid email");
     if (!inviteCode) throw new ValidationError("Enter your invite code");
     if (password.length < 8) throw new ValidationError("Password must be at least 8 characters");
@@ -54,7 +60,13 @@ export async function claimInvite(input: {
 
     const now = new Date().toISOString();
     const batch = db.batch();
-    batch.set(db.collection("users").doc(uid), { email, role: "restaurant", createdAt: now });
+    batch.set(db.collection("users").doc(uid), {
+      email,
+      role: "restaurant",
+      createdAt: now,
+      termsAcceptedAt: now,
+      termsVersion: TERMS_VERSION,
+    });
     batch.set(db.collection("restaurants").doc(uid), {
       ownerUid: uid,
       ownerEmail: email,
@@ -73,8 +85,23 @@ export async function claimInvite(input: {
     batch.update(company.ref, { ownerUid: uid });
     await batch.commit();
 
+    await logActivity({
+      type: "auth.signup",
+      message: `${email} created the owner account for ${company.get("companyName") ?? "a company"}`,
+      actor: { uid, email },
+      target: { kind: "company", id: company.id, name: company.get("companyName") ?? "" },
+      meta: { termsVersion: TERMS_VERSION },
+    });
     return { ok: true, data: undefined };
   } catch (err) {
+    if (err instanceof ValidationError) {
+      await logActivity({
+        type: "auth.signup_failed",
+        message: `Signup refused for ${email || "unknown email"}: ${err.message}`,
+        actor: { email },
+        meta: { code: inviteCode.slice(0, 20) },
+      });
+    }
     return fail(err, "Signup failed. Please try again.");
   }
 }

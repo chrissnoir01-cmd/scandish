@@ -1,12 +1,21 @@
 "use server";
 
+import { logActivity, listActivity as readActivity } from "@/lib/server/activity";
 import { requireAdmin } from "@/lib/server/auth";
-import { adminDb } from "@/lib/server/firebase-admin";
+import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
 import { generateInviteCode, uniqueSlug } from "@/lib/server/ids";
 import { fail } from "@/lib/server/result";
 import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { ValidationError, validateString as str } from "@/lib/server/validate";
-import type { ActionResult, Company, CompanyStatus, Plan, PremiumTemplate } from "@/lib/types";
+import type {
+  AccountSummary,
+  ActionResult,
+  ActivityEvent,
+  Company,
+  CompanyStatus,
+  Plan,
+  PremiumTemplate,
+} from "@/lib/types";
 
 const PLANS: Plan[] = ["standard", "premium"];
 const TEMPLATES: PremiumTemplate[] = ["default", "camellia", "sample", "freshy"];
@@ -45,8 +54,12 @@ function toCompany(id: string, d: Record<string, unknown>): Company {
   };
 }
 
-/** Applies a change to a company and mirrors the given fields onto its restaurant. */
-async function updateCompany(id: string, fields: Record<string, unknown>, mirror: Record<string, unknown> = {}) {
+/** Applies a change to a company and mirrors the given fields onto its restaurant. Returns the company name. */
+async function updateCompany(
+  id: string,
+  fields: Record<string, unknown>,
+  mirror: Record<string, unknown> = {}
+): Promise<string> {
   const ref = companies().doc(id);
   const snap = await ref.get();
   if (!snap.exists) throw new ValidationError("Company not found");
@@ -64,7 +77,10 @@ async function updateCompany(id: string, fields: Record<string, unknown>, mirror
 
   revalidateRestaurant(snap.get("slug"));
   revalidateRestaurant(restaurant?.get("slug"));
+  return snap.get("companyName") ?? "";
 }
+
+const adminActor = (a: { uid: string; email?: string }) => ({ uid: a.uid, email: a.email });
 
 export async function listCompanies(idToken: string): Promise<ActionResult<Company[]>> {
   try {
@@ -106,7 +122,7 @@ export async function createCompany(
   input: NewCompanyInput
 ): Promise<ActionResult<{ inviteCode: string; slug: string }>> {
   try {
-    await requireAdmin(idToken);
+    const admin = await requireAdmin(idToken);
 
     const companyName = str(input.companyName, 120, "Company name");
     const managerName = str(input.managerName, 120, "Manager name");
@@ -123,7 +139,7 @@ export async function createCompany(
     const slug = await uniqueSlug(companyName);
     const inviteCode = generateInviteCode();
 
-    await companies().add({
+    const ref = await companies().add({
       companyName,
       managerName,
       phone,
@@ -147,6 +163,12 @@ export async function createCompany(
       updatedAt: now(),
     });
 
+    await logActivity({
+      type: "admin.company_created",
+      message: `Created company ${companyName} (${email}) — page /r/${slug}`,
+      actor: adminActor(admin),
+      target: { kind: "company", id: ref.id, name: companyName },
+    });
     return { ok: true, data: { inviteCode, slug } };
   } catch (err) {
     return fail(err, "Failed to create company");
@@ -155,9 +177,16 @@ export async function createCompany(
 
 export async function setCompanyStatus(idToken: string, id: string, status: CompanyStatus): Promise<ActionResult> {
   try {
-    await requireAdmin(idToken);
+    const admin = await requireAdmin(idToken);
     if (status !== "active" && status !== "inactive") throw new ValidationError("Invalid status");
-    await updateCompany(id, { status }, { status });
+    const name = await updateCompany(id, { status }, { status });
+    await logActivity({
+      type: "admin.status_changed",
+      message: `${status === "active" ? "Activated" : "Deactivated"} ${name}`,
+      actor: adminActor(admin),
+      target: { kind: "company", id, name },
+      meta: { status },
+    });
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Status update failed");
@@ -166,7 +195,7 @@ export async function setCompanyStatus(idToken: string, id: string, status: Comp
 
 export async function renewSubscription(idToken: string, id: string, days: number): Promise<ActionResult<string>> {
   try {
-    await requireAdmin(idToken);
+    const admin = await requireAdmin(idToken);
     if (!Number.isInteger(days) || days < 1 || days > 3650) {
       throw new ValidationError("Days must be between 1 and 3650");
     }
@@ -179,7 +208,14 @@ export async function renewSubscription(idToken: string, id: string, days: numbe
     base.setDate(base.getDate() + days);
     const subscriptionEnd = base.toISOString();
 
-    await updateCompany(id, { subscriptionEnd, status: "active" }, { status: "active" });
+    const name = await updateCompany(id, { subscriptionEnd, status: "active" }, { status: "active" });
+    await logActivity({
+      type: "admin.renewed",
+      message: `Renewed ${name} for ${days} days — now ends ${subscriptionEnd.slice(0, 10)}`,
+      actor: adminActor(admin),
+      target: { kind: "company", id, name },
+      meta: { days, subscriptionEnd },
+    });
     return { ok: true, data: subscriptionEnd };
   } catch (err) {
     return fail(err, "Renewal failed");
@@ -192,8 +228,8 @@ export async function updatePremium(
   change: { plan?: Plan; premiumEnabled?: boolean; premiumTemplate?: PremiumTemplate }
 ): Promise<ActionResult> {
   try {
-    await requireAdmin(idToken);
-    const fields: Record<string, unknown> = {};
+    const admin = await requireAdmin(idToken);
+    const fields: Record<string, string | boolean> = {};
     if (change.plan !== undefined) {
       if (!PLANS.includes(change.plan)) throw new ValidationError("Invalid plan");
       fields.plan = change.plan;
@@ -203,7 +239,14 @@ export async function updatePremium(
       if (!TEMPLATES.includes(change.premiumTemplate)) throw new ValidationError("Invalid template");
       fields.premiumTemplate = change.premiumTemplate;
     }
-    await updateCompany(id, fields, fields);
+    const name = await updateCompany(id, fields, fields);
+    await logActivity({
+      type: "admin.premium_changed",
+      message: `Changed ${name}: ${Object.entries(fields).map(([k, v]) => `${k} → ${v}`).join(", ")}`,
+      actor: adminActor(admin),
+      target: { kind: "company", id, name },
+      meta: fields,
+    });
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Premium update failed");
@@ -213,7 +256,7 @@ export async function updatePremium(
 /** Removes the company record only. The owner's restaurant data is kept (and goes offline). */
 export async function deleteCompany(idToken: string, id: string): Promise<ActionResult> {
   try {
-    await requireAdmin(idToken);
+    const admin = await requireAdmin(idToken);
     const ref = companies().doc(id);
     const snap = await ref.get();
     if (!snap.exists) throw new ValidationError("Company not found");
@@ -222,8 +265,71 @@ export async function deleteCompany(idToken: string, id: string): Promise<Action
     await ref.delete();
     revalidateRestaurant(snap.get("slug"));
     revalidateRestaurant(restaurant?.get("slug"));
+    const name = snap.get("companyName") ?? "";
+    await logActivity({
+      type: "admin.company_deleted",
+      message: `Deleted company ${name} (${snap.get("email") ?? "no email"})`,
+      actor: adminActor(admin),
+      target: { kind: "company", id, name },
+    });
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Delete failed");
+  }
+}
+
+export async function listActivity(
+  idToken: string,
+  before?: string
+): Promise<ActionResult<ActivityEvent[]>> {
+  try {
+    await requireAdmin(idToken);
+    return { ok: true, data: await readActivity({ before, limit: 100 }) };
+  } catch (err) {
+    return fail(err, "Could not load activity");
+  }
+}
+
+/** Every login account, straight from Firebase Auth, joined with its role and restaurant. */
+export async function listAccounts(idToken: string): Promise<ActionResult<AccountSummary[]>> {
+  try {
+    await requireAdmin(idToken);
+    const db = adminDb();
+    const [users, restaurants] = await Promise.all([
+      db.collection("users").select("role").get(),
+      db.collection("restaurants").select("name", "slug").get(),
+    ]);
+    const roles = new Map(users.docs.map((d) => [d.id, d.get("role")]));
+    const places = new Map(restaurants.docs.map((d) => [d.id, { name: d.get("name") ?? "", slug: d.get("slug") ?? "" }]));
+
+    const accounts: AccountSummary[] = [];
+    let pageToken: string | undefined;
+    do {
+      const page = await adminAuth().listUsers(1000, pageToken);
+      for (const u of page.users) {
+        const place = places.get(u.uid);
+        const role = u.customClaims?.admin === true ? "admin" : roles.get(u.uid) === "restaurant" || place ? "restaurant" : "unknown";
+        const iso = (t?: string | null) => (t ? new Date(t).toISOString() : "");
+        accounts.push({
+          uid: u.uid,
+          email: u.email ?? "",
+          role,
+          restaurantName: place?.name ?? "",
+          slug: place?.slug ?? "",
+          emailVerified: u.emailVerified,
+          disabled: u.disabled,
+          createdAt: iso(u.metadata.creationTime),
+          lastSignInAt: iso(u.metadata.lastSignInTime),
+          lastActiveAt: iso(u.metadata.lastRefreshTime),
+        });
+      }
+      pageToken = page.pageToken;
+    } while (pageToken);
+
+    const last = (a: AccountSummary) => a.lastActiveAt || a.lastSignInAt || a.createdAt;
+    accounts.sort((a, b) => last(b).localeCompare(last(a)));
+    return { ok: true, data: accounts };
+  } catch (err) {
+    return fail(err, "Could not load accounts");
   }
 }

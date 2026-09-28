@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { PoweredBy } from "@/components/auth/AuthCard";
+import { recordFailedSignIn, recordSignIn } from "../actions/session";
 
 const BRAND = "#f08c6c";
 
@@ -51,9 +52,11 @@ export default function LoginForm({
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      void cred.user.getIdToken().then((t) => recordSignIn(t, "portal"));
       router.push("/dashboard");
     } catch (error) {
+      void recordFailedSignIn(email, "portal", (error as { code?: string })?.code ?? "unknown");
       setErrorMessage(loginError(error));
     } finally {
       setLoading(false);

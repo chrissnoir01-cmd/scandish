@@ -11,3 +11,7 @@ export const BRAND = {
 } as const;
 
 export const MIN_PASSWORD_LENGTH = 8;
+
+/** Bump when the Terms or Privacy Policy change materially; stored with each acceptance. */
+export const TERMS_VERSION = "2026-09-28";
+export const LEGAL_UPDATED = "28 September 2026";

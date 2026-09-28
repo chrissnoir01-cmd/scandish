@@ -5,7 +5,9 @@ import StandardTemplate from "@/components/public/StandardTemplate";
 import CamelliaTemplate from "@/components/premium/CamelliaTemplate";
 import SampleTemplate from "@/components/premium/SampleTemplate";
 import FreshyTemplate from "@/components/premium/FreshyTemplate";
+import ViewTracker from "@/components/public/ViewTracker";
 import { optimizeImage } from "@/lib/links";
+import type { PublicRestaurant } from "@/lib/types";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -38,6 +40,15 @@ export default async function RestaurantPage({ params }: Props) {
   const restaurant = await getPublicRestaurant(slug);
   if (!restaurant) notFound();
 
+  return (
+    <>
+      <ViewTracker slug={slug} />
+      <Template restaurant={restaurant} />
+    </>
+  );
+}
+
+function Template({ restaurant }: { restaurant: PublicRestaurant }) {
   if (restaurant.plan === "premium" && restaurant.premiumEnabled) {
     switch (restaurant.premiumTemplate) {
       case "camellia":
@@ -48,6 +59,5 @@ export default async function RestaurantPage({ params }: Props) {
         return <FreshyTemplate restaurant={restaurant} />;
     }
   }
-
   return <StandardTemplate restaurant={restaurant} />;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { claimInvite } from "../actions/signup";
+import { recordSignIn } from "../actions/session";
 import Link from "next/link";
 import { PoweredBy } from "@/components/auth/AuthCard";
 
@@ -17,6 +18,7 @@ export default function CompanySignupPage() {
   const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -28,13 +30,15 @@ export default function CompanySignupPage() {
     }
     if (password.length < 8) return setError("Password must be at least 8 characters.");
     if (password !== confirmPassword) return setError("Passwords do not match.");
+    if (!acceptedTerms) return setError("Please accept the Terms of Service and Privacy Policy.");
 
     setError("");
     setLoading(true);
     try {
-      const res = await claimInvite({ email, inviteCode, password });
+      const res = await claimInvite({ email, inviteCode, password, acceptedTerms });
       if (!res.ok) return setError(res.error);
-      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      void cred.user.getIdToken().then((t) => recordSignIn(t, "portal"));
       router.push("/dashboard");
     } catch {
       setError("Signup failed. Check your connection and try again.");
@@ -90,6 +94,26 @@ export default function CompanySignupPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
+
+          <label className="flex items-start gap-3 rounded-2xl bg-[#fff8f5] p-3 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#f08c6c]"
+            />
+            <span>
+              I have read and accept the{" "}
+              <Link href="/terms" target="_blank" className="font-semibold" style={{ color: BRAND }}>
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank" className="font-semibold" style={{ color: BRAND }}>
+                Privacy Policy
+              </Link>{" "}
+              of ScanDish, a service of Ironic Lab Inc.
+            </span>
+          </label>
 
           {error && (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">

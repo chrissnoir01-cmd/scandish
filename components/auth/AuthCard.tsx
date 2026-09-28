@@ -36,13 +36,25 @@ export default function AuthCard({
 }
 
 export function PoweredBy({ className = "" }: { className?: string }) {
+  const link = "font-semibold text-gray-500 hover:text-[#f08c6c]";
   return (
-    <p className={`text-center text-xs text-gray-400 ${className}`}>
-      {BRAND.name} is a product of{" "}
-      <a href={BRAND.companyUrl} target="_blank" rel="noreferrer" className="font-semibold text-gray-500 hover:text-[#f08c6c]">
-        {BRAND.company}
-      </a>
-    </p>
+    <div className={`space-y-1 text-center text-xs text-gray-400 ${className}`}>
+      <p>
+        {BRAND.name} is owned and governed by{" "}
+        <a href={BRAND.companyUrl} target="_blank" rel="noreferrer" className={link}>
+          {BRAND.company}
+        </a>
+      </p>
+      <p>
+        <Link href="/terms" className={link}>
+          Terms of Service
+        </Link>
+        <span className="mx-2" aria-hidden>·</span>
+        <Link href="/privacy" className={link}>
+          Privacy Policy
+        </Link>
+      </p>
+    </div>
   );
 }
 

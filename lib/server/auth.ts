@@ -19,7 +19,16 @@ export async function requireUser(idToken: unknown): Promise<DecodedIdToken> {
 /** Admin access comes only from the `admin` custom claim, which only server scripts can set. */
 export async function requireAdmin(idToken: unknown): Promise<DecodedIdToken> {
   const user = await requireUser(idToken);
-  if (user.admin !== true) throw new AuthError("Not authorized");
+  if (user.admin !== true) {
+    // A signed-in non-admin calling admin functions is worth knowing about.
+    const { logActivity } = await import("./activity");
+    await logActivity({
+      type: "security.unauthorized",
+      message: `${user.email ?? user.uid} tried to use a MasterAdmin function`,
+      actor: { uid: user.uid, email: user.email },
+    });
+    throw new AuthError("Not authorized");
+  }
   return user;
 }
 

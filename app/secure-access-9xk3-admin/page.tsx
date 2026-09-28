@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../lib/firebase";
+import { recordFailedSignIn, recordSignIn } from "../actions/session";
 
 const BRAND = "#f08c6c";
 
@@ -29,14 +30,16 @@ export default function AdminLoginPage() {
       const res = await signInWithEmailAndPassword(auth, email, password);
       // The admin claim is set server-side (npm run set-admin); the server re-checks it on every action.
       const token = await res.user.getIdTokenResult(true);
+      void recordSignIn(token.token, "admin");
       if (token.claims.admin !== true) {
+        await recordFailedSignIn(email, "admin", "not-admin");
         await auth.signOut();
         setError("Not authorized as admin");
         return;
       }
       router.push("/master-admin");
     } catch (err) {
-      console.error(err);
+      void recordFailedSignIn(email, "admin", (err as { code?: string })?.code ?? "unknown");
       setError("Invalid credentials");
     } finally {
       setLoading(false);

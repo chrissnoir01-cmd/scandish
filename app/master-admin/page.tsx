@@ -16,6 +16,8 @@ import {
 import { daysRemaining as getDaysRemaining } from "../../lib/subscription";
 import type { Company, Plan, PremiumTemplate } from "../../lib/types";
 import { PoweredBy } from "@/components/auth/AuthCard";
+import ActivityPanel from "@/components/admin/ActivityPanel";
+import AccountsPanel from "@/components/admin/AccountsPanel";
 
 const BRAND = "#f08c6c";
 
@@ -53,6 +55,7 @@ export default function MasterAdminPage() {
   const [renewCompany, setRenewCompany] = useState<Company | null>(null);
   const [renewDays, setRenewDays] = useState(180);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"companies" | "activity" | "accounts">("companies");
 
   const loadCompanies = useCallback(async () => {
     const res = await listCompanies(await getIdToken());
@@ -174,6 +177,32 @@ export default function MasterAdminPage() {
           <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
         )}
 
+        <nav className="mb-6 flex gap-2 overflow-x-auto" aria-label="Admin sections">
+          {(
+            [
+              ["companies", "Companies"],
+              ["activity", "System activity"],
+              ["accounts", "Accounts"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              aria-current={view === id ? "page" : undefined}
+              className={`whitespace-nowrap rounded-2xl px-5 py-2.5 text-sm font-semibold transition ${
+                view === id ? "bg-gray-900 text-white" : "border border-[#f2ddd6] bg-white text-gray-600 hover:bg-[#fff8f5]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {view === "activity" && <ActivityPanel />}
+        {view === "accounts" && <AccountsPanel />}
+
+        {view === "companies" && (
+        <>
         {/* OVERVIEW */}
         <section className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           {stats.map(([label, value]) => (
@@ -381,6 +410,8 @@ export default function MasterAdminPage() {
             </div>
           </div>
         </section>
+        </>
+        )}
 
         <PoweredBy className="mt-10" />
       </div>

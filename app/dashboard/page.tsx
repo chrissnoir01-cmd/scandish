@@ -4,9 +4,10 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, getIdToken, uploadFile } from "../../lib/firebase";
-import { loadDashboard, saveDashboard } from "../actions/restaurant";
+import { loadAnalytics, loadDashboard, saveDashboard } from "../actions/restaurant";
 import { GRACE_DAYS } from "../../lib/subscription";
-import type { MenuCategory, MenuItem, Offer } from "../../lib/types";
+import type { Analytics, MenuCategory, MenuItem, Offer } from "../../lib/types";
+import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import {
   onAuthStateChanged,
   signOut,
@@ -55,6 +56,7 @@ const BRAND = "#f08c6c";
 const QR_DARK = "#7a4636";
 
 type TabKey =
+  | "insights"
   | "general"
   | "branding"
   | "menu"
@@ -242,6 +244,22 @@ export default function DashboardPage() {
   // UPLOAD STATES
   const [uploading, setUploading] = useState<string | null>(null);
 
+  // VIEWS
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+
+  const refreshAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await loadAnalytics(await getIdToken());
+      if (res.ok) setAnalytics(res.data);
+    } catch {
+      // Views are a nice-to-have; the dashboard keeps working without them.
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
   // --- HELPERS ---
 
   const triggerToast = (msg: string, type: "success" | "error" = "success") => {
@@ -309,6 +327,10 @@ export default function DashboardPage() {
       setPlan(data.plan);
       setDaysRemaining(data.subscription?.daysRemaining ?? null);
       setLoadState("ready");
+
+      const views = await loadAnalytics(await user.getIdToken()).catch(() => null);
+      if (views?.ok) setAnalytics(views.data);
+      setAnalyticsLoading(false);
     };
     loadData();
   }, [user]);
@@ -728,7 +750,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <ViewsCard analytics={analytics} loading={analyticsLoading} onOpen={() => setActiveTab("insights")} />
+
           <nav className="flex flex-col gap-1 rounded-[2.5rem] border border-[#f4d4ca] bg-white p-3 shadow-sm">
+            <TabButton id="insights" label="Insights" emoji="📊" activeTab={activeTab} setActiveTab={setActiveTab} />
             <TabButton id="general" label="General" emoji="🏢" activeTab={activeTab} setActiveTab={setActiveTab} />
             <TabButton id="branding" label="Branding" emoji="🎨" activeTab={activeTab} setActiveTab={setActiveTab} />
             <TabButton id="menu" label="Menu" emoji="🍽️" activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -744,6 +769,10 @@ export default function DashboardPage() {
 
         {/* MAIN CONTENT AREA */}
         <div className="space-y-6">
+          {activeTab === "insights" && (
+            <InsightsPanel analytics={analytics} loading={analyticsLoading} onRefresh={refreshAnalytics} />
+          )}
+
           {activeTab === "general" && (
             <div className="space-y-6">
               <SectionCard title="Identity" icon={Settings}>
@@ -1186,7 +1215,7 @@ export default function DashboardPage() {
                 <div className="rounded-3xl bg-white p-4 shadow-lg">
                   <QRCodeSVG
                     id="restaurant-qr"
-                    value={publicUrl || "https://scandish.app"}
+                    value={publicUrl ? `${publicUrl}?s=qr` : "https://scandish.online"}
                     size={160}
                     level="H"
                     fgColor={QR_DARK}
@@ -1297,6 +1326,11 @@ export default function DashboardPage() {
         <a href="https://ironiclab.site" target="_blank" rel="noreferrer" className="hover:text-[#f08c6c]">
           A product of Ironic Lab Inc.
         </a>
+        <span className="mt-2 block">
+          <a href="/terms" target="_blank" className="hover:text-[#f08c6c]">Terms</a>
+          {" • "}
+          <a href="/privacy" target="_blank" className="hover:text-[#f08c6c]">Privacy</a>
+        </span>
       </footer>
     </main>
   );
