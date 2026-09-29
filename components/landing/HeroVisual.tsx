@@ -5,7 +5,7 @@ import TableCardQr from "./TableCardQr";
 
 const DISHES = [
   { name: "Sticky chicken wings", note: "Honey-chilli glaze", price: "7,500", img: "/images/food2.jpg", pick: true },
-  { name: "Beef brochettes", note: "Charcoal-grilled, plantain", price: "6,000", img: "/images/goat.jpg" },
+  { name: "Beef brochettes", note: "Charcoal-grilled, plantain", price: "6,000", img: "/images/goat.png" },
   { name: "Wood-fired pizza", note: "Tomato, mozzarella, sausage", price: "9,000", img: "/images/fries.jpg" },
   { name: "Market salad", note: "From local farms", price: "4,500", img: "/images/juice.jpg" },
 ];
@@ -24,7 +24,7 @@ export default function HeroVisual() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
             <div className="absolute bottom-3 left-3 right-3 flex items-end gap-2.5 text-white">
               <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white">
-                <Image src="/images/kigali-grill.jpg" alt="" fill sizes="40px" className="object-cover" />
+                <Image src="/images/kigali-grill.png" alt="" fill sizes="40px" className="object-cover" />
               </span>
               <span>
                 <span className="block text-[15px] font-semibold leading-tight">Kigali Delicious</span>

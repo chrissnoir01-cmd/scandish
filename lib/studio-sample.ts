@@ -22,7 +22,7 @@ export const SAMPLE_CONTENT: RestaurantContent = {
     {
       category: "Grill",
       items: [
-        { id: "1", name: "Beef brochettes", description: "Charcoal-grilled, with fried plantain", price: "6,000 RWF", image: "/images/goat.jpg", available: true, featured: true },
+        { id: "1", name: "Beef brochettes", description: "Charcoal-grilled, with fried plantain", price: "6,000 RWF", image: "/images/goat.png", available: true, featured: true },
         { id: "2", name: "Sticky chicken wings", description: "Honey-chilli glaze, twelve pieces", price: "15,000 RWF", image: "/images/food2.jpg", available: true, featured: false },
         { id: "3", name: "Wood-fired pizza", description: "Tomato, mozzarella, spicy sausage", price: "2,500 RWF", image: "/images/fries.jpg", available: true, featured: false },
       ],
@@ -35,5 +35,5 @@ export const SAMPLE_CONTENT: RestaurantContent = {
       ],
     },
   ],
-  gallery: ["/images/food2.jpg", "/images/fries.jpg", "/images/juice.jpg", "/images/goat.jpg", "/images/soda.jpg"],
+  gallery: ["/images/food2.jpg", "/images/fries.jpg", "/images/juice.jpg", "/images/goat.png", "/images/soda.jpg"],
 };

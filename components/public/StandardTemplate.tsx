@@ -135,7 +135,7 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
       <section className="relative w-full h-[55vh] min-h-[360px] md:h-[65vh] md:min-h-[450px] flex flex-col items-center justify-center text-center px-4">
         <div className="absolute inset-0 z-0">
           <img
-            {...responsiveImage(restaurant.coverImage || "/images/kigali-grill.jpg")}
+            {...responsiveImage(restaurant.coverImage || "/images/kigali-grill.png")}
             alt={restaurant.name}
             fetchPriority="high"
             className="w-full h-full object-cover"

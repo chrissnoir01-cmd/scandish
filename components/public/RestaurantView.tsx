@@ -49,7 +49,7 @@ function coverFor(r: PublicRestaurant) {
         return responsiveImage(r.coverImage, r.design.hero.variant === "split" ? SPLIT_COVER_SIZES : "100vw");
       }
   }
-  return responsiveImage(r.coverImage || "/images/kigali-grill.jpg");
+  return responsiveImage(r.coverImage || "/images/kigali-grill.png");
 }
 
 /** Order buttons wear each design's own accent colour. */
