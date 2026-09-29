@@ -15,6 +15,8 @@ import {
   Smartphone,
   Store,
   Tablet,
+  Globe,
+  Palette,
   UserPlus,
   type LucideIcon,
 } from "lucide-react";
@@ -55,8 +57,12 @@ const ICONS: Record<ActivityType, LucideIcon> = {
   "support.business_created": Headset,
   "support.password_reissued": KeyRound,
   "restaurant.password_set": KeyRound,
+  "restaurant.orders_toggled": Store,
   "contract.generated": FileText,
+  "document.viewed": FileText,
   "admin.settings_changed": Settings,
+  "admin.design_changed": Palette,
+  "admin.subdomain_changed": Globe,
   "security.unauthorized": ShieldAlert,
 };
 

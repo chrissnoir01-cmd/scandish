@@ -10,6 +10,7 @@ import { requireSupport } from "@/lib/server/support";
 const PREVIEW_COMPANY = {
   companyName: "Sample Restaurant Ltd",
   businessType: "Restaurant",
+  certificateNumber: "100000000",
   managerName: "Jane Uwase",
   email: "manager@example.rw",
   phone: "0788 000 000",

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowRight,
   Clock,
@@ -13,12 +12,16 @@ import {
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
 import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
-import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
+import { ROOT_URL } from "@/lib/domains";
+import MenuViewSwitcher, { useMenuView } from "@/components/menu/MenuViewSwitcher";
+import { AddToOrder, OrderToggle } from "@/components/order/OrderProvider";
+import { facebookUrl, instagramUrl, optimizeImage, responsiveImage, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
 export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
   const menu = restaurant.menu;
   const gallery = restaurant.gallery;
   const offers = restaurant.offers;
+  const [view, setView] = useMenuView(restaurant.slug, "card");
 
   const cover = restaurant.coverImage || "/images/hero.png";
   const logo = restaurant.logo || "/images/logo.jpg";
@@ -53,7 +56,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
       {/* HERO */}
       <section className="relative min-h-screen overflow-hidden px-6">
         <img
-          src={cover}
+          {...responsiveImage(cover)} fetchPriority="high"
           alt={restaurant.name}
           className="absolute inset-0 h-full w-full object-cover opacity-50"
         />
@@ -63,7 +66,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
         <nav className="relative z-20 mx-auto flex max-w-7xl items-center justify-between py-6">
           <div className="flex items-center gap-3">
             <img
-              src={logo}
+              src={optimizeImage(logo, 240)}
               alt={restaurant.name}
               className="h-12 w-12 rounded-2xl object-cover border border-white/20"
             />
@@ -185,11 +188,17 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
               </h2>
             </div>
 
+            <div className="mb-12 flex flex-wrap items-center justify-center gap-3">
+              <OrderToggle dark />
+              <MenuViewSwitcher value={view} onChange={setView} accent="#f08c6c" accentText="#1a0f0b" dark />
+            </div>
+
             <div className="space-y-16">
               {menu.map((cat: MenuCategory, index: number) => {
                 const items = cat.items || [];
                 const imageItems = items.filter((item: MenuItem) => item.image);
                 const textItems = items.filter((item: MenuItem) => !item.image);
+                if (items.length === 0) return null;
 
                 return (
                   <div key={index}>
@@ -198,67 +207,73 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
                       <h3 className="text-3xl font-black">{cat.category}</h3>
                     </div>
 
-                    {imageItems.length > 0 && (
-                      <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {imageItems.map((item: MenuItem, i: number) => (
-                          <div
-                            key={i}
-                            className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06]"
-                          >
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="h-64 w-full object-cover"
-                            />
-                            <div className="p-6">
-                              <div className="flex items-baseline gap-3">
-                                <h4 className="text-xl font-black">
-                                  {item.name}
-                                </h4>
-                                <div className="flex-1 border-b border-dotted border-white/25" />
-                                <p className="font-black text-[#f08c6c]">
-                                  {item.price}
-                                </p>
+                    {view === "card" && (
+                      <>
+                        {imageItems.length > 0 && (
+                          <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                            {imageItems.map((item: MenuItem, i: number) => (
+                              <div key={i} className={`overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] ${item.available ? "" : "opacity-60"}`}>
+                                <img src={optimizeImage(item.image, 600)} loading="lazy" alt={item.name} className="h-64 w-full object-cover" />
+                                <div className="p-6">
+                                  <div className="flex items-baseline gap-3">
+                                    <h4 className="text-xl font-black">{item.name}</h4>
+                                    <div className="flex-1 border-b border-dotted border-white/25" />
+                                    <p className="font-black text-[#f08c6c]">{item.price}</p>
+                                  </div>
+                                  {item.description && <p className="mt-3 text-white/60 italic">{item.description}</p>}
+                                  <SoldOut item={item} />
+                                  <AddToOrder item={item} category={cat.category} className="mt-4" />
+                                </div>
                               </div>
+                            ))}
+                          </div>
+                        )}
 
-                              {item.description && (
-                                <p className="mt-3 text-white/60 italic">
-                                  {item.description}
-                                </p>
-                              )}
+                        <TextDishes items={textItems} category={cat.category} />
+                      </>
+                    )}
+
+                    {view === "bar" && (
+                      <div className="divide-y divide-white/10 rounded-[2rem] border border-white/10 bg-black/20 px-5 md:px-8">
+                        {items.map((item: MenuItem, i: number) => (
+                          <div key={i} className={`flex items-center gap-4 py-4 ${item.available ? "" : "opacity-60"}`}>
+                            {item.image && (
+                              <img src={optimizeImage(item.image, 200)} loading="lazy" alt={item.name} className="h-16 w-16 shrink-0 rounded-2xl object-cover" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline gap-3">
+                                <h4 className="font-bold">{item.name}</h4>
+                                <div className="flex-1 border-b border-dotted border-white/25" />
+                                <p className="whitespace-nowrap font-bold text-[#f08c6c]">{item.price}</p>
+                              </div>
+                              {item.description && <p className="mt-1 line-clamp-2 text-sm italic text-white/55">{item.description}</p>}
+                              <SoldOut item={item} />
+                              <AddToOrder item={item} category={cat.category} className="mt-2" />
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {textItems.length > 0 && (
-                      <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 md:p-8">
-                        <div className="space-y-5">
-                          {textItems.map((item: MenuItem, i: number) => (
-                            <div
-                              key={i}
-                              className="border-b border-white/10 pb-4 last:border-0"
-                            >
-                              <div className="flex items-baseline gap-3">
-                                <h4 className="text-lg font-bold">
-                                  {item.name}
-                                </h4>
-                                <div className="flex-1 border-b border-dotted border-white/25" />
-                                <p className="font-bold italic text-[#f08c6c]">
-                                  {item.price}
-                                </p>
+                    {view === "square" && (
+                      <>
+                        {imageItems.length > 0 && (
+                          <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                            {imageItems.map((item: MenuItem, i: number) => (
+                              <div key={i} className={`overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.06] ${item.available ? "" : "opacity-60"}`}>
+                                <img src={optimizeImage(item.image, 500)} loading="lazy" alt={item.name} className="aspect-square w-full object-cover" />
+                                <div className="p-3.5">
+                                  <h4 className="font-bold leading-snug">{item.name}</h4>
+                                  <p className="mt-0.5 text-sm font-bold text-[#f08c6c]">{item.price}</p>
+                                  <SoldOut item={item} />
+                                  <AddToOrder item={item} category={cat.category} className="mt-2" />
+                                </div>
                               </div>
-
-                              {item.description && (
-                                <p className="mt-2 italic text-white/55">
-                                  {item.description}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                            ))}
+                          </div>
+                        )}
+                        <TextDishes items={textItems} category={cat.category} />
+                      </>
                     )}
                   </div>
                 );
@@ -285,7 +300,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
               {gallery.slice(0, 6).map((img: string, i: number) => (
                 <img
                   key={i}
-                  src={img}
+                  src={optimizeImage(img, 900)} loading="lazy"
                   alt="Gallery"
                   className={`h-72 w-full rounded-[2rem] object-cover ${
                     i === 0 ? "md:col-span-2 md:h-[30rem]" : ""
@@ -398,11 +413,39 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
       <footer className="border-t border-white/10 px-6 py-8 text-center text-sm text-white/50">
         <p>
           Premium experience powered by{" "}
-          <Link href="/" className="font-black text-[#f08c6c]">
+          <a href={ROOT_URL} className="font-black text-[#f08c6c]">
             ScanDish
-          </Link>
+          </a>
         </p>
       </footer>
     </main>
+  );
+}
+
+function SoldOut({ item }: { item: MenuItem }) {
+  if (item.available) return null;
+  return <span className="mt-2 inline-block rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-white/70">Sold out</span>;
+}
+
+/** Dishes without a photo: clean lines, never an empty photo space. */
+function TextDishes({ items, category }: { items: MenuItem[]; category: string }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-black/20 p-6 md:p-8">
+      <div className="space-y-5">
+        {items.map((item, i) => (
+          <div key={i} className={`border-b border-white/10 pb-4 last:border-0 ${item.available ? "" : "opacity-60"}`}>
+            <div className="flex items-baseline gap-3">
+              <h4 className="text-lg font-bold">{item.name}</h4>
+              <div className="flex-1 border-b border-dotted border-white/25" />
+              <p className="font-bold italic text-[#f08c6c]">{item.price}</p>
+            </div>
+            {item.description && <p className="mt-2 italic text-white/55">{item.description}</p>}
+            <SoldOut item={item} />
+            <AddToOrder item={item} category={category} className="mt-3" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

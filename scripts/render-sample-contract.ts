@@ -34,6 +34,7 @@ const pdf = await buildContractPdf({
   business: {
     name: values.business_name,
     type: values.business_type,
+    registration: "100000000",
     manager: values.manager_name,
     email: values.manager_email,
     phone: values.manager_phone,

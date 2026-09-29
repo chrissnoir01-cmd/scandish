@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
 import {
   ArrowRight,
   Clock,
@@ -17,7 +16,10 @@ import {
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
 import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
-import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
+import { ROOT_URL } from "@/lib/domains";
+import { useMenuView } from "@/components/menu/MenuViewSwitcher";
+import { AddToOrder, OrderToggle } from "@/components/order/OrderProvider";
+import { facebookUrl, instagramUrl, optimizeImage, responsiveImage, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
 export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
   const menu = restaurant.menu;
@@ -26,7 +28,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
 
   // UI States
   const [activeCategory, setActiveCategory] = useState(menu[0]?.category || "");
-  const [viewMode, setViewMode] = useState<"bar" | "card" | "square">("card");
+  const [viewMode, setViewMode] = useMenuView(restaurant.slug, "card");
   const [searchQuery, setSearchQuery] = useState("");
 
   const cover = restaurant.coverImage || "/images/hero.png";
@@ -67,7 +69,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
       {/* HERO SECTION - Optimized for Mobile visibility */}
       <section className="relative min-h-[85vh] w-full overflow-hidden flex flex-col">
         <img
-          src={cover}
+          {...responsiveImage(cover)} fetchPriority="high"
           alt={restaurant.name}
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -76,7 +78,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
         <nav className="relative z-20 mx-auto w-full max-w-7xl flex items-center justify-between px-6 py-6 md:py-8">
           <div className="flex items-center gap-3 md:gap-4">
             <img
-              src={logo}
+              src={optimizeImage(logo, 240)}
               alt={restaurant.name}
               className="h-12 w-12 md:h-14 md:w-14 rounded-full border-2 border-white object-cover shadow-xl"
             />
@@ -237,6 +239,9 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
       {/* SIGNATURE MENU CONTENT */}
       <section className="bg-zinc-50 px-4 md:px-6 py-12 md:py-20 min-h-[60vh]">
         <div className="mx-auto max-w-6xl">
+          <div className="mb-10 flex justify-center empty:hidden">
+            <OrderToggle />
+          </div>
           {filteredMenu.length === 0 ? (
             <div className="text-center py-20">
                 <p className="font-serif text-xl text-zinc-400 italic">No matches found for &ldquo;{searchQuery}&rdquo;</p>
@@ -258,7 +263,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
                         <div key={i} className="flex items-start md:items-center gap-4 group border-b border-zinc-200 pb-6 last:border-0 transition-colors">
                           {item.image && (
                             <div className="h-16 w-16 md:h-20 md:w-20 flex-shrink-0 overflow-hidden rounded-full border border-zinc-200 bg-white shadow-sm">
-                                <img src={item.image} className="h-full w-full object-cover" alt={item.name} />
+                                <img src={optimizeImage(item.image, 600)} loading="lazy" className="h-full w-full object-cover" alt={item.name} />
                             </div>
                           )}
                           <div className="flex-1">
@@ -272,6 +277,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
                             {item.description && (
                               <p className="mt-1 text-[11px] md:text-sm font-light italic text-zinc-500 leading-relaxed">{item.description}</p>
                             )}
+                            <AddToOrder item={item} category={cat.category} className="mt-2" />
                           </div>
                         </div>
                       ))}
@@ -280,13 +286,14 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
     
                   {/* VIEW: CARD (Modern Luxury Grid) */}
                   {viewMode === "card" && (
-                    <div className="grid gap-6 md:gap-10 sm:grid-cols-2">
-                      {cat.items.map((item: MenuItem, i: number) => (
+                    <>
+                    <div className="grid gap-6 md:gap-10 sm:grid-cols-2 empty:hidden">
+                      {cat.items.filter((item: MenuItem) => item.image).map((item: MenuItem, i: number) => (
                         <div key={i} className="flex flex-col bg-white border border-zinc-100 p-3 md:p-4 shadow-sm transition-all hover:shadow-xl group">
                           {item.image && (
                             <div className="aspect-[16/9] overflow-hidden mb-4">
                               <img
-                                src={item.image}
+                                src={optimizeImage(item.image, 600)} loading="lazy"
                                 alt={item.name}
                                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                               />
@@ -305,19 +312,23 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
                               {item.description}
                             </p>
                           )}
+                          <AddToOrder item={item} category={cat.category} className="mt-3 self-start" />
                         </div>
                       ))}
                     </div>
+                      <TextDishes items={cat.items.filter((item: MenuItem) => !item.image)} category={cat.category} />
+                    </>
                   )}
-    
+
                   {/* VIEW: SQUARE (No-Description Visual Grid) */}
                   {viewMode === "square" && (
-                    <div className="grid gap-3 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                       {cat.items.map((item: MenuItem, i: number) => (
+                    <>
+                    <div className="grid gap-3 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 empty:hidden">
+                       {cat.items.filter((item: MenuItem) => item.image).map((item: MenuItem, i: number) => (
                         <div key={i} className="relative aspect-square overflow-hidden group bg-white border border-zinc-100 shadow-sm transition-all hover:-translate-y-1">
                           {item.image ? (
                             <img
-                            src={item.image}
+                            src={optimizeImage(item.image, 600)} loading="lazy"
                             alt={item.name}
                             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                             />
@@ -330,11 +341,15 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
                           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-3 md:p-4">
                              <h4 className="text-white font-serif text-sm md:text-lg leading-tight">{item.name}</h4>
                              <p className="text-red-300 font-bold mt-1 text-xs md:text-sm">{item.price}</p>
+                             <AddToOrder item={item} category={cat.category} className="mt-2 self-start" />
                           </div>
                         </div>
                       ))}
                     </div>
+                      <TextDishes items={cat.items.filter((item: MenuItem) => !item.image)} category={cat.category} />
+                    </>
                   )}
+
                 </div>
               ))
           )}
@@ -356,7 +371,7 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
               {gallery.map((img: string, i: number) => (
                 <div key={i} className="overflow-hidden shadow-sm transition-all hover:shadow-2xl active:scale-[0.98]">
                   <img
-                    src={img}
+                    src={optimizeImage(img, 900)} loading="lazy"
                     alt="Gallery"
                     className="w-full object-cover rounded-sm brightness-105 contrast-[1.02]"
                   />
@@ -475,9 +490,9 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
       <footer className="bg-zinc-50 px-6 py-12 text-center border-t border-zinc-100">
         <p className="text-[9px] md:text-[10px] uppercase tracking-[0.4em] text-zinc-400">
           Managed with distinction by{" "}
-          <Link href="/" className="font-bold text-red-900 hover:underline">
+          <a href={ROOT_URL} className="font-bold text-red-900 hover:underline">
             ScanDish Premium
-          </Link>
+          </a>
         </p>
       </footer>
 
@@ -492,5 +507,25 @@ export default function CamelliaTemplate({ restaurant }: { restaurant: PublicRes
         }
       `}</style>
     </main>
+  );
+}
+
+/** Dishes without a photo: clean lines, never an empty photo space. */
+function TextDishes({ items, category }: { items: MenuItem[]; category: string }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mx-auto mt-8 max-w-4xl space-y-5 border-t border-zinc-200 pt-8">
+      {items.map((item, i) => (
+        <div key={i} className="border-b border-zinc-200 pb-5 last:border-0">
+          <div className="flex items-baseline justify-between gap-4">
+            <h4 className="font-serif text-base md:text-xl font-medium leading-tight">{item.name}</h4>
+            <div className="mx-2 flex-1 border-b border-dotted border-zinc-300" />
+            <span className="font-serif font-bold text-red-900 text-sm md:text-lg">{item.price}</span>
+          </div>
+          {item.description && <p className="mt-1 text-[11px] md:text-sm font-light italic text-zinc-500 leading-relaxed">{item.description}</p>}
+          <AddToOrder item={item} category={category} className="mt-2" />
+        </div>
+      ))}
+    </div>
   );
 }

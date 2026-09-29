@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
 import {
   ArrowRight,
   Clock,
@@ -19,7 +18,10 @@ import {
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from "react-icons/fa6";
 import type { MenuCategory, MenuItem, Offer, PublicRestaurant } from "@/lib/types";
-import { facebookUrl, instagramUrl, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
+import { ROOT_URL } from "@/lib/domains";
+import { useMenuView } from "@/components/menu/MenuViewSwitcher";
+import { AddToOrder, OrderToggle } from "@/components/order/OrderProvider";
+import { facebookUrl, instagramUrl, optimizeImage, responsiveImage, phoneUrl, tiktokUrl, websiteUrl, whatsappUrl } from "@/lib/links";
 
 export default function FreshMarketTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
   const menu = restaurant.menu;
@@ -27,7 +29,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
   const offers = restaurant.offers;
 
   const [activeCategory, setActiveCategory] = useState(menu[0]?.category || "");
-  const [viewMode, setViewMode] = useState<"bar" | "card" | "square">("card");
+  const [viewMode, setViewMode] = useMenuView(restaurant.slug, "card");
   const [searchQuery, setSearchQuery] = useState("");
 
   const cover = restaurant.coverImage || "/images/hero.png";
@@ -68,7 +70,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
       <section className="relative h-[70vh] md:h-[80vh] w-full overflow-hidden p-4 md:p-6">
         <div className="relative h-full w-full overflow-hidden rounded-[2rem] md:rounded-[3rem] shadow-2xl">
             <img
-            src={cover}
+            {...responsiveImage(cover)} fetchPriority="high"
             alt={restaurant.name}
             className="absolute inset-0 h-full w-full object-cover"
             />
@@ -77,7 +79,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
             <nav className="relative z-20 flex items-center justify-between px-6 py-6">
             <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md p-2 pr-6 rounded-full shadow-lg">
                 <img
-                src={logo}
+                src={optimizeImage(logo, 240)}
                 alt={restaurant.name}
                 className="h-10 w-10 rounded-full object-cover ring-2 ring-lime-400"
                 />
@@ -230,6 +232,9 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
       {/* MENU CONTENT - Vibrant Display */}
       <section className="px-4 md:px-6 pb-20 min-h-[50vh]">
         <div className="mx-auto max-w-6xl">
+          <div className="mb-8 flex justify-center empty:hidden">
+            <OrderToggle />
+          </div>
           {filteredMenu.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-stone-200">
                 <p className="font-bold text-stone-400">No fresh finds match your search.</p>
@@ -250,7 +255,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
                       {cat.items.map((item: MenuItem, i: number) => (
                         <div key={i} className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-stone-100 hover:border-lime-300 transition-colors group">
                           {item.image && (
-                            <img src={item.image} className="h-16 w-16 rounded-xl object-cover" alt={item.name} />
+                            <img src={optimizeImage(item.image, 600)} loading="lazy" className="h-16 w-16 rounded-xl object-cover" alt={item.name} />
                           )}
                           <div className="flex-1 min-w-0">
                              <div className="flex items-center justify-between">
@@ -258,6 +263,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
                                 <span className="font-black text-green-700 bg-green-50 px-3 py-1 rounded-lg text-sm">{item.price}</span>
                              </div>
                              <p className="text-xs text-stone-400 line-clamp-1">{item.description}</p>
+                             <AddToOrder item={item} category={cat.category} className="mt-2" />
                           </div>
                         </div>
                       ))}
@@ -266,12 +272,13 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
     
                   {/* VIEW: CARD (Market Grid) */}
                   {viewMode === "card" && (
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      {cat.items.map((item: MenuItem, i: number) => (
+                    <>
+                    <div className="grid gap-6 sm:grid-cols-2 empty:hidden">
+                      {cat.items.filter((item: MenuItem) => item.image).map((item: MenuItem, i: number) => (
                         <div key={i} className="overflow-hidden bg-white rounded-[2rem] border border-stone-100 transition-all hover:shadow-xl hover:shadow-lime-100/50 group">
                           {item.image && (
                             <div className="aspect-[16/10] overflow-hidden m-3 rounded-[1.5rem]">
-                              <img src={item.image} alt={item.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                              <img src={optimizeImage(item.image, 600)} loading="lazy" alt={item.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
                             </div>
                           )}
                           <div className="p-6 pt-2">
@@ -282,30 +289,38 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
                             {item.description && (
                               <p className="mt-3 text-sm font-medium text-stone-500 leading-relaxed">{item.description}</p>
                             )}
+                            <AddToOrder item={item} category={cat.category} className="mt-4" />
                           </div>
                         </div>
                       ))}
                     </div>
+                      <TextDishes items={cat.items.filter((item: MenuItem) => !item.image)} category={cat.category} />
+                    </>
                   )}
-    
+
                   {/* VIEW: SQUARE (Visual Grid) */}
                   {viewMode === "square" && (
-                    <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-                       {cat.items.map((item: MenuItem, i: number) => (
+                    <>
+                    <div className="grid gap-4 grid-cols-2 md:grid-cols-4 empty:hidden">
+                       {cat.items.filter((item: MenuItem) => item.image).map((item: MenuItem, i: number) => (
                         <div key={i} className="group relative aspect-square overflow-hidden rounded-[2rem] bg-white border border-stone-100">
                           {item.image ? (
-                            <img src={item.image} alt={item.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                            <img src={optimizeImage(item.image, 600)} loading="lazy" alt={item.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
                           ) : (
                             <div className="flex h-full items-center justify-center p-4 text-center bg-lime-50 text-lime-700 font-bold text-xs uppercase">{item.name}</div>
                           )}
                           <div className="absolute bottom-2 left-2 right-2 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-lg">
                              <h4 className="font-bold text-stone-800 text-xs truncate">{item.name}</h4>
                              <p className="text-green-600 font-black text-[10px] mt-0.5">{item.price}</p>
+                             <AddToOrder item={item} category={cat.category} className="mt-2" />
                           </div>
                         </div>
                       ))}
                     </div>
+                      <TextDishes items={cat.items.filter((item: MenuItem) => !item.image)} category={cat.category} />
+                    </>
                   )}
+
                 </div>
               ))
           )}
@@ -322,7 +337,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
             </div>
             <div className="columns-2 gap-4 space-y-4 lg:columns-3">
               {gallery.map((img: string, i: number) => (
-                <img key={i} src={img} alt="Gallery" className="w-full rounded-3xl shadow-sm hover:scale-[1.02] transition-transform cursor-pointer" />
+                <img key={i} src={optimizeImage(img, 900)} loading="lazy" alt="Gallery" className="w-full rounded-3xl shadow-sm hover:scale-[1.02] transition-transform cursor-pointer" />
               ))}
             </div>
           </div>
@@ -424,7 +439,7 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
       <footer className="pb-12 text-center">
         <p className="text-[10px] font-black uppercase tracking-[0.4em] text-stone-400 flex items-center justify-center gap-2">
           Powering Fresh Markets <span className="text-lime-600">●</span> 
-          <Link href="/" className="text-green-900 hover:underline">ScanDish Fresh</Link>
+          <a href={ROOT_URL} className="text-green-900 hover:underline">ScanDish Fresh</a>
         </p>
       </footer>
 
@@ -433,5 +448,25 @@ export default function FreshMarketTemplate({ restaurant }: { restaurant: Public
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </main>
+  );
+}
+
+/** Dishes without a photo: clean lines, never an empty photo space. */
+function TextDishes({ items, category }: { items: MenuItem[]; category: string }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-6 divide-y divide-stone-100 rounded-[2rem] border border-stone-100 bg-white px-5 md:px-8">
+      {items.map((item, i) => (
+        <div key={i} className="py-4">
+          <div className="flex items-baseline gap-3">
+            <h4 className="font-bold text-stone-800">{item.name}</h4>
+            <div className="flex-1 border-b border-dotted border-stone-300" />
+            <span className="whitespace-nowrap font-black text-green-700">{item.price}</span>
+          </div>
+          {item.description && <p className="mt-1 text-sm text-stone-500">{item.description}</p>}
+          <AddToOrder item={item} category={category} className="mt-2" />
+        </div>
+      ))}
+    </div>
   );
 }

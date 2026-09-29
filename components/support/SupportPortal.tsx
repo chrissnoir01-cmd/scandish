@@ -9,20 +9,26 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  FileCheck2,
   FileText,
   KeyRound,
   LayoutDashboard,
   LogOut,
   PlusCircle,
   RefreshCw,
+  Sparkles,
+  Upload,
   Wallet,
 } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import { createBusiness, reissueTempPassword, type NewBusinessInput } from "@/app/actions/support";
 import { PoweredBy } from "@/components/auth/AuthCard";
+import { useContact } from "@/components/ContactProvider";
 import { supportAgreementSections } from "@/components/legal/supportAgreement";
 import { BRAND, formatRwf } from "@/lib/brand";
-import { getIdToken } from "@/lib/firebase";
+import { getIdToken, uploadPrivateAsset } from "@/lib/firebase";
+import { openCertificate } from "@/lib/open-certificate";
+import { PREMIUM_BUILD_DAYS } from "@/lib/premium";
 import { agentEarning, type Pricing } from "@/lib/settings";
 import type { AgentBusiness, OnboardingState, SupportPortal as PortalData } from "@/lib/types";
 import { downloadContract } from "@/lib/download-contract";
@@ -49,9 +55,13 @@ const EMPTY: NewBusinessInput = {
   email: "",
   location: "",
   businessType: "Restaurant",
+  certificateNumber: "",
+  certificateId: "",
   plan: "standard",
   notes: "",
 };
+
+const workingDays = `${PREMIUM_BUILD_DAYS.min}–${PREMIUM_BUILD_DAYS.max} working days`;
 
 /** WhatsApp needs digits with country code; local 07… numbers get 250. */
 const waNumber = (phone: string) => {
@@ -66,6 +76,7 @@ interface Credentials {
   email: string;
   phone: string;
   tempPassword: string;
+  premium: boolean;
 }
 
 export default function SupportPortal({
@@ -78,6 +89,7 @@ export default function SupportPortal({
   onLogout: () => void;
 }) {
   const { agent, businesses, pricing } = data;
+  const contact = useContact();
   const suspended = agent.status === "suspended";
   const [tab, setTab] = useState<Tab>("overview");
   const [credentials, setCredentials] = useState<Credentials | null>(null);
@@ -132,8 +144,8 @@ export default function SupportPortal({
                 )}
                 <p className="mt-3 text-sm">
                   To ask for a review, contact{" "}
-                  <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold underline">
-                    {BRAND.supportEmail}
+                  <a href={`mailto:${contact.email}`} className="font-semibold underline">
+                    {contact.email}
                   </a>
                   .
                 </p>
@@ -224,7 +236,7 @@ export default function SupportPortal({
               Accepted {date(agent.agreementAcceptedAt)} · version {agent.agreementVersion || "—"} · set by {BRAND.company}
             </p>
             <div className="mt-6 space-y-8">
-              {supportAgreementSections(pricing).map((s, i) => (
+              {supportAgreementSections(pricing, contact).map((s, i) => (
                 <section key={s.id}>
                   <h3 className="text-lg font-bold">
                     {i + 1}. {s.title}
@@ -265,13 +277,37 @@ function NewBusinessForm({
 }) {
   const [form, setForm] = useState<NewBusinessInput>(EMPTY);
   const [explained, setExplained] = useState(false);
+  const [premiumExplained, setPremiumExplained] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [certificateName, setCertificateName] = useState("");
   const [error, setError] = useState("");
   const set = (k: keyof NewBusinessInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  const premium = form.plan === "premium";
+
+  const uploadCertificate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    setUploading(true);
+    try {
+      const id = await uploadPrivateAsset(file, "certificate");
+      setForm((f) => ({ ...f, certificateId: id }));
+      setCertificateName(file.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Certificate upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.certificateNumber.trim()) return setError("Enter the business registration (RDB) number.");
+    if (!form.certificateId) return setError("Upload the RDB registration certificate (PDF or a clear photo).");
+    if (premium && !premiumExplained) return setError(`Confirm you explained that the Premium page takes ${workingDays} to be ready.`);
     if (!explained) return setError("Confirm that you explained the Terms and Privacy Policy and the business agreed to join.");
     setError("");
     setSaving(true);
@@ -285,9 +321,12 @@ function NewBusinessForm({
         email: res.data.email,
         phone: form.phone,
         tempPassword: res.data.tempPassword,
+        premium,
       });
       setForm(EMPTY);
       setExplained(false);
+      setPremiumExplained(false);
+      setCertificateName("");
     } catch {
       setError("Something went wrong. Check your connection and try again.");
     } finally {
@@ -299,8 +338,8 @@ function NewBusinessForm({
     <form onSubmit={submit} className="rounded-3xl border border-[#f4d4ca] bg-white p-6 md:p-8">
       <h2 className="text-xl font-bold">Onboard a new business</h2>
       <p className="mt-1 text-sm text-gray-500">
-        Creates the business and its manager&apos;s login. You&apos;ll get a temporary password to give the manager; their page
-        goes live once ScanDish activates the subscription.
+        Creates the business and its manager&apos;s login. You&apos;ll get a temporary password to give the manager. The page is
+        live for the {pricing.trialDays}-day setup period, then stays online once ScanDish confirms the subscription.
       </p>
 
       <fieldset disabled={disabled || saving} className="mt-6 grid gap-4 md:grid-cols-2">
@@ -310,6 +349,24 @@ function NewBusinessForm({
         <Field label="Manager phone *"><input className={input} inputMode="tel" placeholder="07…" value={form.phone} onChange={set("phone")} /></Field>
         <Field label="Manager email * (their login)"><input className={input} type="email" value={form.email} onChange={set("email")} /></Field>
         <Field label="Location"><input className={input} value={form.location} onChange={set("location")} /></Field>
+        <Field label="RDB registration number *">
+          <input className={input} placeholder="e.g. 123456789" value={form.certificateNumber} onChange={set("certificateNumber")} />
+        </Field>
+        <div className="block">
+          <span className="mb-2 block text-sm font-medium text-gray-700">RDB registration certificate *</span>
+          <label
+            className={`flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed px-4 py-3 text-sm ${
+              form.certificateId ? "border-green-300 bg-green-50 text-green-800" : "border-[#edd4cb] bg-white text-gray-600 hover:bg-[#fff8f5]"
+            }`}
+          >
+            {form.certificateId ? <CheckCircle2 size={18} className="shrink-0" /> : <Upload size={18} className="shrink-0 text-[#d9694a]" />}
+            <span className="min-w-0 truncate">
+              {uploading ? "Uploading..." : form.certificateId ? `${certificateName || "Certificate"} — tap to replace` : "Upload PDF or a clear photo (max 10 MB)"}
+            </span>
+            <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadCertificate} disabled={uploading} />
+          </label>
+          <span className="mt-1 block text-xs text-gray-400">Stored privately — only ScanDish and you can open it.</span>
+        </div>
         <Field label="Plan">
           <select className={input} value={form.plan} onChange={set("plan")}>
             <option value="standard">
@@ -320,7 +377,34 @@ function NewBusinessForm({
             </option>
           </select>
         </Field>
-        <Field label="Notes for ScanDish (optional)"><input className={input} value={form.notes} onChange={set("notes")} /></Field>
+        <Field label="Notes for ScanDish (optional)">
+          <input className={input} placeholder={premium ? "Style wishes for the Premium page…" : ""} value={form.notes} onChange={set("notes")} />
+        </Field>
+
+        {premium && (
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm leading-6 text-violet-900 md:col-span-2">
+            <p className="flex items-center gap-2 font-bold">
+              <Sparkles size={16} /> Premium page is designed from scratch — ready in {workingDays}
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>ScanDish builds a unique Premium page for this business. It is published within {workingDays} after the account is created.</li>
+              <li>
+                Meanwhile the manager sets up <strong>everything</strong> in their dashboard — logo, cover, menu, prices, photos, contacts,
+                colours. Their page shows the Standard design until the Premium page is switched on, then the same content appears in it.
+              </li>
+              <li>Add any style wishes (colours, mood, references) in the notes above.</li>
+            </ul>
+            <label className="mt-3 flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={premiumExplained}
+                onChange={(e) => setPremiumExplained(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
+              />
+              <span>I explained to the manager that the Premium page takes {workingDays} and that they should fill in all their content meanwhile.</span>
+            </label>
+          </div>
+        )}
 
         <label className="flex items-start gap-3 rounded-2xl bg-[#fff8f5] p-4 text-sm text-gray-700 md:col-span-2">
           <input type="checkbox" checked={explained} onChange={(e) => setExplained(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#f08c6c]" />
@@ -335,7 +419,7 @@ function NewBusinessForm({
       {disabled && <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">Creating businesses is disabled while your account is suspended.</p>}
       {error && <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      <button type="submit" disabled={disabled || saving} className="mt-6 w-full rounded-2xl bg-[#f08c6c] py-4 font-bold text-white disabled:opacity-50 md:w-auto md:px-10">
+      <button type="submit" disabled={disabled || saving || uploading} className="mt-6 w-full rounded-2xl bg-[#f08c6c] py-4 font-bold text-white disabled:opacity-50 md:w-auto md:px-10">
         {saving ? "Creating..." : "Create business & login"}
       </button>
     </form>
@@ -381,6 +465,7 @@ function BusinessList({
         email: res.data.email,
         phone: b.phone,
         tempPassword: res.data.tempPassword,
+        premium: b.premiumPending,
       });
     } finally {
       setBusy(null);
@@ -407,6 +492,16 @@ function BusinessList({
                   Live until {date(b.trialEndsAt)} — goes offline unless ScanDish confirms the subscription
                 </p>
               )}
+              {b.premiumPending && (
+                <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-violet-700">
+                  <Sparkles size={12} /> Premium page being built by ScanDish
+                  {b.premiumDueAt ? ` — ready by ${date(b.premiumDueAt)}` : ""} · Standard design shows until then
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                RDB No. {b.registrationNumber || "not provided"}
+                {!b.hasCertificate && " · no certificate on file"}
+              </p>
               <p className="mt-1 text-xs text-gray-400">
                 Created {date(b.createdAt)} · setup fee {formatRwf(b.setupFee)}, your share {formatRwf(b.agentEarning)} ·{" "}
                 {b.passwordChanged ? "manager has set their own password" : b.managerHasLoggedIn ? "manager signed in, password not yet changed" : "manager hasn’t signed in yet"}
@@ -424,6 +519,16 @@ function BusinessList({
               >
                 <FileText size={14} /> {busy === `contract-${b.id}` ? "Generating..." : "Contract PDF"}
               </button>
+              {b.hasCertificate && (
+                <button
+                  onClick={async () => {
+                    setError((await openCertificate(b.id)) ?? "");
+                  }}
+                  className="flex items-center gap-1 rounded-xl border border-[#f4d4ca] px-3 py-2 text-sm font-semibold text-gray-700"
+                >
+                  <FileCheck2 size={14} /> RDB certificate
+                </button>
+              )}
               {(b.state === "live" || b.state === "setup_period") && b.slug && (
                 <a href={`/r/${b.slug}`} target="_blank" rel="noreferrer" className="rounded-xl border border-[#f4d4ca] px-3 py-2 text-sm font-semibold text-gray-700">
                   View page
@@ -453,7 +558,11 @@ function CredentialsDialog({ c, onClose }: { c: Credentials; onClose: () => void
   const message =
     `Hello ${c.managerName}, welcome to ScanDish!\n\n` +
     `Your login for ${c.businessName}:\n${loginUrl}\nEmail: ${c.email}\nTemporary password: ${c.tempPassword}\n\n` +
-    `You will be asked to choose your own password the first time you sign in. Keep it private.`;
+    `You will be asked to choose your own password the first time you sign in. Keep it private.` +
+    (c.premium
+      ? `\n\nYour custom Premium page is being designed by ScanDish and will be ready within ${workingDays}. ` +
+        `Please add your logo, cover photo, full menu with prices and photos, and contact details now — they will appear on your Premium page as soon as it is published.`
+      : "");
 
   const copy = async () => {
     await navigator.clipboard?.writeText(message);
@@ -515,7 +624,8 @@ function OnboardingGuide({ pricing }: { pricing: Pricing }) {
         "Guests scan a QR code on the table and see the full menu, photos, offers, WhatsApp, directions — no app to install.",
         "The owner updates menu and prices any time from their phone; changes go live instantly.",
         "They see how many people viewed their menu, when, and from which device.",
-        "Standard: professional menu page. Premium: luxury design templates and priority support.",
+        "Standard: professional menu page. Premium: a unique page designed from scratch for the business, plus priority support.",
+        `Premium pages take ${workingDays} to build. The manager fills in all their content meanwhile; it shows in the Standard design until ScanDish publishes the Premium page.`,
       ],
     },
     {
@@ -540,6 +650,7 @@ function OnboardingGuide({ pricing }: { pricing: Pricing }) {
       title: "4. Create the account",
       points: [
         "Use the manager's real email — it becomes their login.",
+        "Enter the RDB registration number and upload the RDB certificate (PDF or a clear photo of the whole page). Both are required.",
         "Generate the service contract PDF, print two copies, and have the manager sign and stamp both for their business. One copy stays with them; bring one back to ScanDish.",
         "Give the temporary password privately (in person or WhatsApp to the manager's own number).",
         "At first sign-in they choose their own password and accept the Terms. After that you can't access their account.",

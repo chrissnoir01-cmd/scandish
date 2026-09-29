@@ -34,6 +34,35 @@ export function agentEarning(pricing: Pricing, plan: Plan): number {
   return Math.round((p.setupFee * p.agentSharePct) / 100);
 }
 
+/* ---------- Contact details (editable in MasterAdmin → Settings) ---------- */
+
+/** How customers and owners reach ScanDish; shown across the whole app. */
+export interface ContactInfo {
+  /** Phone number as displayed and dialled, e.g. "+250781822350". */
+  phone: string;
+  /** WhatsApp number in international digits only, e.g. "250781822350". */
+  whatsapp: string;
+  email: string;
+  updatedAt: string;
+}
+
+export const DEFAULT_CONTACT: ContactInfo = {
+  phone: "+250781822350",
+  whatsapp: "250781822350",
+  email: "support@scandish.online",
+  updatedAt: "",
+};
+
+export const contactWhatsAppUrl = (c: ContactInfo, text?: string) =>
+  `https://wa.me/${c.whatsapp}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+export const contactTelUrl = (c: ContactInfo) => `tel:${c.phone.replace(/[^\d+]/g, "")}`;
+
+/** Local Rwandan numbers (07…) become international (2507…); everything else keeps its digits. */
+export const normalizeWhatsApp = (v: string) => {
+  const d = v.replace(/\D/g, "");
+  return /^0\d{9}$/.test(d) ? `250${d.slice(1)}` : d;
+};
+
 /* ---------- Service contract template ---------- */
 
 export interface ContractTemplate {
@@ -53,6 +82,7 @@ export const CONTRACT_PLACEHOLDERS: { key: string; label: string }[] = [
   { key: "date", label: "Date generated" },
   { key: "business_name", label: "Business name" },
   { key: "business_type", label: "Business type" },
+  { key: "registration_number", label: "RDB registration number" },
   { key: "manager_name", label: "Manager name" },
   { key: "manager_email", label: "Manager email" },
   { key: "manager_phone", label: "Manager phone" },

@@ -2,10 +2,10 @@ export const BRAND = {
   name: "ScanDish",
   color: "#f08c6c",
   url: "https://scandish.online",
-  supportEmail: "support@scandish.online",
-  supportPhone: "+250781822350",
-  supportWhatsApp: "https://wa.me/250781822350",
+  // Phone, WhatsApp and email are editable in MasterAdmin → Settings: use getContact() / useContact().
   /** The company that builds, operates and monitors ScanDish. */
+  /** The menu the homepage's "See a live menu" button opens (the ScanDish demo restaurant). */
+  demoMenuSlug: "kiza-restaurant",
   company: "Ironic Lab Inc.",
   companyUrl: "https://ironiclab.site",
 } as const;

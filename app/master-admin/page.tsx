@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
-import { auth, getIdToken, uploadFile } from "../../lib/firebase";
+import { auth, getIdToken, uploadPrivateAsset } from "../../lib/firebase";
 import {
   createCompany as createCompanyAction,
   deleteCompany as deleteCompanyAction,
   listCompanies,
   renewSubscription as renewAction,
   setCompanyStatus,
+  setShowOnHomepage,
   updatePremium,
   type NewCompanyInput,
 } from "../actions/admin";
@@ -20,7 +21,11 @@ import ActivityPanel from "@/components/admin/ActivityPanel";
 import AccountsPanel from "@/components/admin/AccountsPanel";
 import SupportTeamPanel from "@/components/admin/SupportTeamPanel";
 import SettingsPanel from "@/components/admin/SettingsPanel";
+import DesignStudioPanel from "@/components/admin/DesignStudioPanel";
+import SubdomainEditor from "@/components/admin/SubdomainEditor";
+import { subdomainUrl } from "@/lib/domains";
 import { downloadContract } from "@/lib/download-contract";
+import { openCertificate } from "@/lib/open-certificate";
 
 const BRAND = "#f08c6c";
 
@@ -31,7 +36,7 @@ const EMPTY_FORM: NewCompanyInput = {
   email: "",
   location: "",
   certificateNumber: "",
-  certificateUrl: "",
+  certificateId: "",
   businessType: "Restaurant",
   subscriptionStart: "",
   subscriptionEnd: "",
@@ -51,6 +56,7 @@ export default function MasterAdminPage() {
   const [creatingCompany, setCreatingCompany] = useState(false);
   const [createdInvite, setCreatedInvite] = useState<{ code: string; name: string } | null>(null);
   const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [certificateName, setCertificateName] = useState("");
 
   const [confirmStatusCompany, setConfirmStatusCompany] = useState<Company | null>(null);
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState<Company | null>(null);
@@ -58,7 +64,7 @@ export default function MasterAdminPage() {
   const [renewCompany, setRenewCompany] = useState<Company | null>(null);
   const [renewDays, setRenewDays] = useState(180);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"companies" | "activity" | "support" | "accounts" | "settings">("companies");
+  const [view, setView] = useState<"companies" | "activity" | "studio" | "support" | "accounts" | "settings">("companies");
   const [contractBusy, setContractBusy] = useState<string | null>(null);
 
   const loadCompanies = useCallback(async () => {
@@ -119,6 +125,7 @@ export default function MasterAdminPage() {
       }
       setCreatedInvite({ code: res.data.inviteCode, name: form.companyName });
       setForm(EMPTY_FORM);
+      setCertificateName("");
       await loadCompanies();
     } finally {
       setCreatingCompany(false);
@@ -186,6 +193,7 @@ export default function MasterAdminPage() {
             [
               ["companies", "Companies"],
               ["activity", "System activity"],
+              ["studio", "Design Studio"],
               ["support", "Support team"],
               ["accounts", "Accounts"],
               ["settings", "Settings"],
@@ -206,6 +214,7 @@ export default function MasterAdminPage() {
 
         {view === "activity" && <ActivityPanel />}
         {view === "accounts" && <AccountsPanel />}
+        {view === "studio" && <DesignStudioPanel />}
         {view === "support" && <SupportTeamPanel />}
         {view === "settings" && <SettingsPanel />}
 
@@ -232,13 +241,13 @@ export default function MasterAdminPage() {
               <input placeholder="Phone Number *" className="input" value={form.phone} onChange={(e) => setField("phone")(e.target.value)} />
               <input type="email" placeholder="Owner Email * (used to sign up)" className="input" value={form.email} onChange={(e) => setField("email")(e.target.value)} />
               <input placeholder="Location" className="input" value={form.location} onChange={(e) => setField("location")(e.target.value)} />
-              <input placeholder="Certificate / Registration Number" className="input" value={form.certificateNumber} onChange={(e) => setField("certificateNumber")(e.target.value)} />
+              <input placeholder="RDB Registration Number" className="input" value={form.certificateNumber} onChange={(e) => setField("certificateNumber")(e.target.value)} />
 
               <div>
-                <label className="text-sm text-gray-500">Certificate Document</label>
+                <label className="text-sm text-gray-500">RDB Certificate (PDF or photo, stored privately)</label>
                 <input
                   type="file"
-                  accept="image/*,.pdf"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
                   className="input"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
@@ -246,7 +255,8 @@ export default function MasterAdminPage() {
                     if (!file) return;
                     setUploadingCertificate(true);
                     try {
-                      setField("certificateUrl")(await uploadFile(file));
+                      setField("certificateId")(await uploadPrivateAsset(file, "certificate"));
+                      setCertificateName(file.name);
                     } catch (err) {
                       alert(err instanceof Error ? err.message : "Certificate upload failed");
                     } finally {
@@ -255,10 +265,8 @@ export default function MasterAdminPage() {
                   }}
                 />
                 {uploadingCertificate && <p className="text-sm text-gray-500 mt-1">Uploading certificate...</p>}
-                {form.certificateUrl && (
-                  <a href={form.certificateUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold mt-2 inline-block" style={{ color: BRAND }}>
-                    View uploaded certificate
-                  </a>
+                {form.certificateId && !uploadingCertificate && (
+                  <p className="text-sm font-semibold mt-2 text-green-700">✓ {certificateName || "Certificate"} uploaded</p>
                 )}
               </div>
 
@@ -314,6 +322,36 @@ export default function MasterAdminPage() {
                         <p className="text-sm text-gray-500">Email: {company.email || "No email"}</p>
                         <p className="text-sm text-gray-500">Location: {company.location || "No location"}</p>
                         <p className="text-sm text-gray-500">Page: /r/{company.slug}</p>
+                        <p className="text-sm text-gray-500">
+                          RDB Reg. No.: {company.certificateNumber || "Not provided"}
+                          {company.hasCertificate && (
+                            <button
+                              onClick={async () => {
+                                const err = await openCertificate(company.id);
+                                if (err) alert(err);
+                              }}
+                              className="ml-2 font-semibold underline"
+                              style={{ color: BRAND }}
+                            >
+                              View certificate
+                            </button>
+                          )}
+                        </p>
+                        {company.premiumPending && (
+                          <p
+                            className={`mt-1 inline-block rounded-lg px-2 py-1 text-sm font-semibold ${
+                              company.premiumOverdue
+                                ? "bg-red-50 text-red-700"
+                                : "bg-violet-50 text-violet-800"
+                            }`}
+                          >
+                            Premium page to build
+                            {company.premiumDueAt
+                              ? ` — due ${new Date(company.premiumDueAt).toLocaleDateString("en-GB", { timeZone: "Africa/Kigali", weekday: "short", day: "numeric", month: "short" })}`
+                              : ""}
+                            . Showing the Standard design until you switch Premium ON.
+                          </p>
+                        )}
                         {company.createdByAgentName && (
                           <p className="text-sm text-violet-700">
                             Onboarded by {company.createdByAgentName} (support team) · setup fee{" "}
@@ -371,6 +409,17 @@ export default function MasterAdminPage() {
                         <span className="text-sm font-semibold">{company.status === "active" ? "Active" : "Inactive"}</span>
                       </label>
 
+                      <label className="flex items-center gap-3 rounded-2xl border border-[#f2ddd6] bg-white px-4 py-2 cursor-pointer" title="Logo appears in the customer row on scandish.online (needs a logo and an active page)">
+                        <input
+                          type="checkbox"
+                          checked={company.showOnHomepage}
+                          disabled={busy}
+                          onChange={(e) => run((t) => setShowOnHomepage(t, company.id, e.target.checked))}
+                          className="h-5 w-5 accent-[#f08c6c]"
+                        />
+                        <span className="text-sm font-semibold">Show on homepage</span>
+                      </label>
+
                       <div className="mt-4 w-full rounded-2xl border border-[#f2ddd6] bg-white p-4">
                         <p className="mb-3 text-sm font-bold" style={{ color: BRAND }}>Premium Controls</p>
                         <div className="grid gap-3 md:grid-cols-3">
@@ -404,11 +453,22 @@ export default function MasterAdminPage() {
                             <option value="camellia">Camellia Template</option>
                             <option value="sample">Sample Template</option>
                             <option value="freshy">Freshy Template</option>
+                            <option value="studio">Design Studio page</option>
                           </select>
+                        </div>
+                        <div className="mt-3">
+                          <SubdomainEditor
+                            key={`${company.id}-${company.subdomain}`}
+                            companyId={company.id}
+                            current={company.subdomain}
+                            premium={company.plan === "premium"}
+                            suggestion={company.companyName}
+                            onSaved={loadCompanies}
+                          />
                         </div>
                         {company.slug && (
                           <a
-                            href={`/r/${company.slug}`}
+                            href={company.subdomain ? `${subdomainUrl(company.subdomain)}/` : `/r/${company.slug}`}
                             target="_blank"
                             rel="noreferrer"
                             className="mt-3 inline-block rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"

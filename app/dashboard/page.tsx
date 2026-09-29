@@ -6,9 +6,15 @@ import { useRouter } from "next/navigation";
 import { auth, getIdToken, uploadFile } from "../../lib/firebase";
 import { loadAnalytics, loadDashboard, saveDashboard } from "../actions/restaurant";
 import { GRACE_DAYS } from "../../lib/subscription";
+import { PREMIUM_BUILD_DAYS } from "../../lib/premium";
+import { subdomainHost, subdomainUrl } from "../../lib/domains";
 import type { Analytics, MenuCategory, MenuItem, Offer } from "../../lib/types";
 import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
+import OrdersPanel from "@/components/dashboard/OrdersPanel";
+import InstallApp from "@/components/dashboard/InstallApp";
+import { useContact } from "@/components/ContactProvider";
+import { contactTelUrl, contactWhatsAppUrl } from "@/lib/settings";
 import {
   onAuthStateChanged,
   signOut,
@@ -49,6 +55,7 @@ import {
   Clock,
   CircleCheck,
   Globe,
+  Sparkles,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -63,9 +70,10 @@ type TabKey =
   | "menu"
   | "gallery"
   | "offers"
-  | "account";
+  | "account"
+  | "orders";
 
-const SUPPORT_WHATSAPP = "https://wa.me/250781822350";
+// Support contact comes from MasterAdmin → Settings (useContact).
 
 // --- REUSABLE UI COMPONENTS ---
 
@@ -146,12 +154,14 @@ function TabButton({
   emoji,
   activeTab,
   setActiveTab,
+  badge = 0,
 }: {
   id: TabKey;
   label: string;
   emoji: string;
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
+  badge?: number;
 }) {
   const isActive = activeTab === id;
   return (
@@ -165,7 +175,13 @@ function TabButton({
     >
       <span>{emoji}</span>
       <span>{label}</span>
-      {isActive && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-white" />}
+      {badge > 0 ? (
+        <span className={`ml-auto min-w-6 rounded-full px-2 py-0.5 text-center text-xs font-black ${isActive ? "bg-white text-[#f08c6c]" : "animate-pulse bg-[#f08c6c] text-white"}`}>
+          {badge}
+        </span>
+      ) : (
+        isActive && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-white" />
+      )}
     </button>
   );
 }
@@ -174,6 +190,8 @@ function TabButton({
 
 export default function DashboardPage() {
   const router = useRouter();
+  const contact = useContact();
+  const supportWhatsApp = contactWhatsAppUrl(contact);
 
   // AUTH & LOADING STATE
   const [user, setUser] = useState<User | null>(null);
@@ -239,6 +257,10 @@ export default function DashboardPage() {
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [trialEndsAt, setTrialEndsAt] = useState("");
   const [awaitingSubscription, setAwaitingSubscription] = useState(false);
+  const [premiumBuild, setPremiumBuild] = useState<{ dueAt: string } | null>(null);
+  const [subdomain, setSubdomain] = useState("");
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const [newOrders, setNewOrders] = useState(0);
 
   // LOAD / DIRTY STATE
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -298,7 +320,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
     const loadData = async () => {
-      const res = await loadDashboard(await user.getIdToken());
+      const token = await user.getIdToken();
+      // View statistics load alongside the page data; the editor opens as soon as its own data arrives.
+      const viewsRequest = loadAnalytics(token).catch(() => null);
+      const res = await loadDashboard(token);
       if (!res.ok) {
         setLoadState("error");
         triggerToast(res.error, "error");
@@ -329,13 +354,18 @@ export default function DashboardPage() {
       setGallery(data.gallery);
       setOffers(data.offers);
       setPlan(data.plan);
+      setOrdersOpen(data.ordersOpen);
+      // The app's "Track order" shortcut opens /dashboard?tab=orders.
+      if (data.plan === "premium" && new URLSearchParams(window.location.search).get("tab") === "orders") setActiveTab("orders");
       setDaysRemaining(data.subscription?.daysRemaining ?? null);
       setMustChangePassword(data.mustChangePassword);
       setTrialEndsAt(data.subscription?.trialEndsAt ?? "");
       setAwaitingSubscription(!!data.subscription && !data.subscription.subscriptionEnd && !data.subscription.trialEndsAt);
+      setPremiumBuild(data.premiumPending ? { dueAt: data.premiumDueAt } : null);
+      setSubdomain(data.subdomain);
       setLoadState("ready");
 
-      const views = await loadAnalytics(await user.getIdToken()).catch(() => null);
+      const views = await viewsRequest;
       if (views?.ok) setAnalytics(views.data);
       setAnalyticsLoading(false);
     };
@@ -624,7 +654,7 @@ export default function DashboardPage() {
         ctx.fillStyle = "#111827"; ctx.font = "bold 36px Arial";
         ctx.fillText(name || "Restaurant", w / 2, 900);
         ctx.fillStyle = "#6b7280"; ctx.font = "22px Arial";
-        ctx.fillText(`/r/${slug}`, w / 2, 940);
+        ctx.fillText(subdomain ? subdomainHost(subdomain) : `/r/${slug}`, w / 2, 940);
         ctx.fillStyle = BRAND; ctx.font = "bold 24px Arial";
         ctx.fillText("Scan to view menu", w / 2, 995);
         const link = document.createElement("a");
@@ -636,7 +666,8 @@ export default function DashboardPage() {
     }
   };
 
-  const publicUrl = slug ? `${window.location.origin}/r/${slug}` : "";
+  // Premium pages have their own address; old /r/ links and QR codes redirect to it.
+  const publicUrl = subdomain ? `${subdomainUrl(subdomain)}/` : slug ? `${window.location.origin}/r/${slug}` : "";
   const completion = useMemo(() => {
     let score = 0;
     if (name) score += 1;
@@ -673,7 +704,7 @@ export default function DashboardPage() {
               : "Check your connection and refresh the page."}
           </p>
           <div className="mt-6 flex justify-center gap-3">
-            <a href={SUPPORT_WHATSAPP} target="_blank" rel="noreferrer" className="rounded-2xl bg-[#f08c6c] px-5 py-3 text-sm font-bold text-white">
+            <a href={supportWhatsApp} target="_blank" rel="noreferrer" className="rounded-2xl bg-[#f08c6c] px-5 py-3 text-sm font-bold text-white">
               Contact support
             </a>
             <button onClick={() => signOut(auth)} className="rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-500">
@@ -710,6 +741,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <InstallApp />
             {dirty && (
               <span className="hidden text-xs font-bold text-orange-500 sm:inline">Unpublished changes</span>
             )}
@@ -738,13 +770,32 @@ export default function DashboardPage() {
               </p>
             </div>
             <a
-              href={`${SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hello ScanDish, I would like to confirm the subscription for ${name}.`)}`}
+              href={`${supportWhatsApp}?text=${encodeURIComponent(`Hello ScanDish, I would like to confirm the subscription for ${name}.`)}`}
               target="_blank"
               rel="noreferrer"
               className="ml-auto hidden shrink-0 rounded-2xl bg-white px-4 py-2 text-sm font-bold shadow-sm sm:block"
             >
               Confirm subscription
             </a>
+          </div>
+        </div>
+      )}
+
+      {premiumBuild && (
+        <div className="mx-auto mt-6 max-w-7xl px-4 md:px-6">
+          <div className="flex items-center gap-4 rounded-3xl border border-violet-200 bg-violet-50 p-5 text-violet-900">
+            <Sparkles className="shrink-0" />
+            <div>
+              <p className="font-bold">Your Premium page is being designed</p>
+              <p className="text-sm">
+                ScanDish is building a unique Premium page for {name || "your business"}
+                {premiumBuild.dueAt
+                  ? ` — ready by ${new Date(premiumBuild.dueAt).toLocaleDateString("en-GB", { timeZone: "Africa/Kigali", weekday: "long", day: "numeric", month: "long" })}`
+                  : ` within ${PREMIUM_BUILD_DAYS.min}–${PREMIUM_BUILD_DAYS.max} working days`}
+                . Fill in everything now — logo, cover photo, menu, prices, photos and contacts. Until it is published your page uses the
+                Standard design, then the same content appears in your Premium page.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -793,6 +844,9 @@ export default function DashboardPage() {
           <ViewsCard analytics={analytics} loading={analyticsLoading} onOpen={() => setActiveTab("insights")} />
 
           <nav className="flex flex-col gap-1 rounded-[2.5rem] border border-[#f4d4ca] bg-white p-3 shadow-sm">
+            {plan === "premium" && (
+              <TabButton id="orders" label="Track order" emoji="🧾" badge={newOrders} activeTab={activeTab} setActiveTab={setActiveTab} />
+            )}
             <TabButton id="insights" label="Insights" emoji="📊" activeTab={activeTab} setActiveTab={setActiveTab} />
             <TabButton id="general" label="General" emoji="🏢" activeTab={activeTab} setActiveTab={setActiveTab} />
             <TabButton id="branding" label="Branding" emoji="🎨" activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -809,6 +863,17 @@ export default function DashboardPage() {
 
         {/* MAIN CONTENT AREA */}
         <div className="space-y-6">
+          {/* Stays mounted on every tab so orders keep arriving and printing. */}
+          {plan === "premium" && (
+            <OrdersPanel
+              restaurantName={name}
+              initialOpen={ordersOpen}
+              visible={activeTab === "orders"}
+              onNewCount={setNewOrders}
+              notify={triggerToast}
+            />
+          )}
+
           {activeTab === "insights" && (
             <InsightsPanel analytics={analytics} loading={analyticsLoading} onRefresh={refreshAnalytics} />
           )}
@@ -1235,7 +1300,7 @@ export default function DashboardPage() {
                     {daysRemaining !== null ? `${daysRemaining} days remaining` : "Premium Plan"}
                  </p>
                  <a
-                   href={`${SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hello ScanDish, I would like to renew the subscription for ${name}.`)}`}
+                   href={`${supportWhatsApp}?text=${encodeURIComponent(`Hello ScanDish, I would like to renew the subscription for ${name}.`)}`}
                    target="_blank"
                    rel="noreferrer"
                    className="block w-full py-3 rounded-2xl bg-white text-center text-gray-900 font-black text-sm active:scale-95 transition-all"
@@ -1285,10 +1350,10 @@ export default function DashboardPage() {
                <h4 className="font-black mb-1">Kigali Support</h4>
                <p className="text-xs font-medium text-gray-400 mb-4 leading-relaxed">Contact ScanDish team directly if you have any issues.</p>
                <div className="grid gap-2">
-                 <a href="https://wa.me/250781822350" target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-2xl bg-green-500 p-3 text-sm font-bold text-white">
+                 <a href={supportWhatsApp} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-2xl bg-green-500 p-3 text-sm font-bold text-white">
                    <FaWhatsapp size={20} /> Send WhatsApp
                  </a>
-                 <a href="tel:+250781822350" className="flex items-center gap-3 rounded-2xl bg-blue-500 p-3 text-sm font-bold text-white">
+                 <a href={contactTelUrl(contact)} className="flex items-center gap-3 rounded-2xl bg-blue-500 p-3 text-sm font-bold text-white">
                    <Phone size={18} /> Direct Call
                  </a>
                </div>

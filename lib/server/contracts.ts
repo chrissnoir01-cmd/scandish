@@ -1,8 +1,10 @@
 import "server-only";
 import { BRAND, formatRwf } from "../brand";
+import { subdomainHost } from "../domains";
 import { CONTRACT_PLACEHOLDERS, type ContractTemplate, type Pricing } from "../settings";
 import { fetchPrivatePng } from "./cloudinary";
 import { buildContractPdf } from "./contract-pdf";
+import { getContact } from "./settings";
 
 type Doc = Record<string, unknown>;
 const s = (v: unknown) => (typeof v === "string" ? v : "");
@@ -31,6 +33,7 @@ export async function renderContract(opts: {
     date,
     business_name: s(company.companyName),
     business_type: s(company.businessType) || "Restaurant",
+    registration_number: s(company.certificateNumber) || "-",
     manager_name: s(company.managerName),
     manager_email: s(company.email),
     manager_phone: s(company.phone),
@@ -40,24 +43,25 @@ export async function renderContract(opts: {
     price_6_months: formatRwf(pricing[plan].sixMonths),
     price_1_year: formatRwf(pricing[plan].year),
     trial_days: String(pricing.trialDays),
-    page_url: `${BRAND.url.replace(/^https?:\/\//, "")}/r/${slug}`,
+    page_url: s(company.subdomain) ? subdomainHost(s(company.subdomain)) : `${BRAND.url.replace(/^https?:\/\//, "")}/r/${slug}`,
     support_member: s(company.createdByAgentName) || "-",
     company: BRAND.company,
   };
   const known = new Set(CONTRACT_PLACEHOLDERS.map((p) => p.key));
   const fill = (t: string) => t.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, k: string) => (known.has(k) ? values[k] : m));
 
-  const [signature, stamp] = await Promise.all([fetchPrivatePng(template.signatureId), fetchPrivatePng(template.stampId)]);
+  const [signature, stamp, contact] = await Promise.all([fetchPrivatePng(template.signatureId), fetchPrivatePng(template.stampId), getContact()]);
 
   const pdf = await buildContractPdf({
     title: fill(template.title),
     contractNumber: number,
     date,
     body: fill(template.body),
-    company: { name: BRAND.company, url: BRAND.url.replace(/^https?:\/\//, ""), email: BRAND.supportEmail, phone: BRAND.supportPhone },
+    company: { name: BRAND.company, url: BRAND.url.replace(/^https?:\/\//, ""), email: contact.email, phone: contact.phone },
     business: {
       name: values.business_name,
       type: values.business_type,
+      registration: s(company.certificateNumber),
       manager: values.manager_name,
       email: values.manager_email,
       phone: values.manager_phone,

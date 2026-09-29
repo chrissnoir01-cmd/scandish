@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { FaInstagram, FaFacebook, FaTiktok, FaWhatsapp } from "react-icons/fa6";
 import {
   Phone,
@@ -12,10 +11,6 @@ import {
   Share2,
   ZoomIn,
   Search,
-  LayoutGrid,
-  Rows3,
-  PanelTop,
-  Check,
   Wifi,
   Truck,
   Car,
@@ -26,6 +21,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { MenuItem, PublicRestaurant } from "@/lib/types";
+import MenuViewSwitcher, { useMenuView } from "@/components/menu/MenuViewSwitcher";
+import { AddToOrder, OrderToggle } from "@/components/order/OrderProvider";
+import { ROOT_URL } from "@/lib/domains";
+import { contrastRatio } from "@/lib/design";
 import {
   directionsUrl,
   facebookUrl,
@@ -33,13 +32,12 @@ import {
   mapEmbedUrl,
   optimizeImage,
   phoneUrl,
+  responsiveImage,
   sharePage,
   tiktokUrl,
   websiteUrl,
   whatsappUrl,
 } from "@/lib/links";
-
-type MenuStyle = "bar" | "card" | "square";
 
 const OFFER_ICONS: Record<string, LucideIcon> = {
   wifi: Wifi,
@@ -52,7 +50,42 @@ const OFFER_ICONS: Record<string, LucideIcon> = {
   phone: Phone,
 };
 
-const imagesFirst = (a: MenuItem, b: MenuItem) => Number(Boolean(b.image)) - Number(Boolean(a.image));
+type Entry = { item: MenuItem; category: string };
+
+const imagesFirst = (a: Entry, b: Entry) => Number(Boolean(b.item.image)) - Number(Boolean(a.item.image));
+
+/** Dishes without a photo: clean lines with a dotted leader to the price, never an empty photo space. */
+function TextDishes({ entries, theme }: { entries: Entry[]; theme: PublicRestaurant["theme"] }) {
+  const text = entries.filter(({ item }) => !item.image);
+  if (text.length === 0) return null;
+  return (
+    <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-[#f0e0d8]/40">
+      <div className="space-y-5">
+        {text.map(({ item, category }) => (
+          <div key={`${category}-${item.id || item.name}`} className={`pb-4 border-b border-gray-100 last:border-0 ${item.available ? "" : "opacity-60"}`}>
+            <div className="flex items-baseline gap-3">
+              <h3 className="font-bold text-lg" style={{ color: theme.secondaryColor }}>
+                {item.name}
+                <SoldOut item={item} />
+              </h3>
+              <div className="flex-1 border-b border-dotted border-gray-300" />
+              <span className="italic font-semibold whitespace-nowrap" style={{ color: theme.primaryColor }}>
+                {item.price}
+              </span>
+            </div>
+            {item.description && <p className="mt-2 italic text-gray-600 leading-relaxed">{item.description}</p>}
+            <AddToOrder item={item} category={category} className="mt-3" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SoldOut({ item }: { item: MenuItem }) {
+  if (item.available) return null;
+  return <span className="ml-2 inline-block rounded-full bg-gray-200 px-2 py-0.5 align-middle text-[11px] font-bold text-gray-600">Sold out</span>;
+}
 
 const CONTACT_BUTTON =
   "flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(0,0,0,0.2)] transition-all duration-300 group";
@@ -61,26 +94,25 @@ const CONTACT_ICON = "w-7 h-7 md:w-5 md:h-8 transition-transform group-hover:sca
 export default function StandardTemplate({ restaurant }: { restaurant: PublicRestaurant }) {
   const [activeCategory, setActiveCategory] = useState("Overview");
   const [searchQuery, setSearchQuery] = useState("");
-  const [menuStyle, setMenuStyle] = useState<MenuStyle>("card");
-  const [showStylePicker, setShowStylePicker] = useState(false);
+  const [menuStyle, setMenuStyle] = useMenuView(restaurant.slug, "card");
 
   const { menu: categories, offers, theme } = restaurant;
 
   const categoryNames = useMemo(() => ["Overview", ...categories.map((c) => c.category)], [categories]);
 
-  const displayedItems = useMemo(() => {
+  const displayedItems = useMemo((): Entry[] => {
     const search = searchQuery.trim().toLowerCase();
+    const all = categories.flatMap((c) => c.items.map((item) => ({ item, category: c.category })));
     if (search) {
-      return categories
-        .flatMap((c) => c.items)
-        .filter((i) => i.name.toLowerCase().includes(search) || i.description.toLowerCase().includes(search))
+      return all
+        .filter(({ item }) => item.name.toLowerCase().includes(search) || item.description.toLowerCase().includes(search))
         .sort(imagesFirst);
     }
     const items =
       activeCategory === "Overview"
-        ? categories.map((c) => c.items[0]).filter(Boolean)
-        : categories.find((c) => c.category === activeCategory)?.items ?? [];
-    return [...items].sort(imagesFirst);
+        ? categories.filter((c) => c.items[0]).map((c) => ({ item: c.items[0], category: c.category }))
+        : all.filter((e) => e.category === activeCategory);
+    return items.sort(imagesFirst);
   }, [searchQuery, activeCategory, categories]);
 
   const contacts: { href: string; title: string; Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; external?: boolean }[] = [
@@ -92,7 +124,9 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
     { href: tiktokUrl(restaurant.social.tiktok), title: "TikTok", Icon: FaTiktok, external: true },
   ].filter((c) => c.href);
 
+  const hasPhotos = displayedItems.some(({ item }) => item.image);
   const whatsapp = whatsappUrl(restaurant.whatsapp);
+  const accentText = contrastRatio(theme.primaryColor, "#ffffff") >= 3 ? "#ffffff" : "#111111";
   const sideImage = restaurant.gallery[0] || restaurant.coverImage;
 
   return (
@@ -101,7 +135,7 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
       <section className="relative w-full h-[55vh] min-h-[360px] md:h-[65vh] md:min-h-[450px] flex flex-col items-center justify-center text-center px-4">
         <div className="absolute inset-0 z-0">
           <img
-            src={restaurant.coverImage ? optimizeImage(restaurant.coverImage, 1400) : "/images/kigali-grill.jpg"}
+            {...responsiveImage(restaurant.coverImage || "/images/kigali-grill.jpg")}
             alt={restaurant.name}
             fetchPriority="high"
             className="w-full h-full object-cover"
@@ -242,9 +276,9 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
               <p className="text-gray-500 font-medium italic">Enjoy a curated selection of vibrant dishes.</p>
             </div>
 
-            {/* Search + Style Switcher */}
-            <div className="max-w-2xl mx-auto mb-10 flex items-center gap-3">
-              <div className="relative flex-1 group">
+            {/* Search, order switch and layout switcher */}
+            <div className="max-w-2xl mx-auto mb-10 flex flex-col gap-4">
+              <div className="relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-gray-600 transition-colors" />
                 <input
                   type="search"
@@ -256,35 +290,9 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
                   style={{ "--tw-ring-color": theme.primaryColor } as React.CSSProperties}
                 />
               </div>
-
-              <div className="relative">
-                <button
-                  onClick={() => setShowStylePicker(!showStylePicker)}
-                  aria-label="Change menu layout"
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#f0e0d8] bg-white shadow-sm"
-                  style={{ color: theme.primaryColor }}
-                >
-                  {menuStyle === "bar" && <Rows3 className="w-6 h-6" />}
-                  {menuStyle === "card" && <PanelTop className="w-6 h-6" />}
-                  {menuStyle === "square" && <LayoutGrid className="w-6 h-6" />}
-                </button>
-                {showStylePicker && (
-                  <div className="absolute right-0 top-16 z-40 w-48 rounded-2xl border border-[#f0e0d8] bg-white p-2 shadow-xl">
-                    {(["bar", "card", "square"] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          setMenuStyle(s);
-                          setShowStylePicker(false);
-                        }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[#fff8f5]"
-                      >
-                        <span className="capitalize">{s} View</span>
-                        {menuStyle === s && <Check className="ml-auto w-4 h-4" style={{ color: theme.primaryColor }} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <OrderToggle />
+                <MenuViewSwitcher value={menuStyle} onChange={setMenuStyle} accent={theme.primaryColor} accentText={accentText} className="bg-white" />
               </div>
             </div>
 
@@ -293,7 +301,10 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
               {categoryNames.map((category) => (
                 <button
                   key={category}
-                  onClick={() => setActiveCategory(category)}
+                  onClick={() => {
+                    setActiveCategory(category);
+                    setSearchQuery("");
+                  }}
                   className="relative pb-4 text-lg font-bold whitespace-nowrap transition-all"
                   style={{ color: activeCategory === category ? theme.secondaryColor : "#9ca3af" }}
                 >
@@ -306,18 +317,21 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
             </div>
 
             {displayedItems.length === 0 && (
-              <p className="py-10 text-center text-gray-400 font-medium">No dishes match your search.</p>
+              <p className="py-10 text-center text-gray-400 font-medium">
+                {searchQuery.trim() ? "No dishes match your search." : "No dishes in this category yet."}
+              </p>
             )}
 
             {menuStyle === "card" && (
               <div className="space-y-12">
+                {hasPhotos && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {displayedItems
-                    .filter((item) => item.image)
-                    .map((item) => (
+                    .filter(({ item }) => item.image)
+                    .map(({ item, category }) => (
                       <div
-                        key={item.id || item.name}
-                        className="group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all"
+                        key={`${category}-${item.id || item.name}`}
+                        className={`group bg-white rounded-3xl overflow-hidden border border-[#f0e0d8]/50 shadow-sm hover:shadow-md transition-all ${item.available ? "" : "opacity-60"}`}
                       >
                         <div className="aspect-[4/3] overflow-hidden">
                           <img
@@ -331,46 +345,27 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
                           <div className="flex justify-between gap-4 mb-2">
                             <h3 className="text-xl font-bold" style={{ color: theme.secondaryColor }}>
                               {item.name}
+                              <SoldOut item={item} />
                             </h3>
                             <p className="font-black text-lg" style={{ color: theme.primaryColor }}>
                               {item.price}
                             </p>
                           </div>
                           {item.description && <p className="italic text-gray-500">{item.description}</p>}
+                          <AddToOrder item={item} category={category} className="mt-4" />
                         </div>
                       </div>
                     ))}
                 </div>
-
-                {displayedItems.some((item) => !item.image) && (
-                  <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-[#f0e0d8]/40">
-                    <div className="space-y-5">
-                      {displayedItems
-                        .filter((item) => !item.image)
-                        .map((item) => (
-                          <div key={item.id || item.name} className="pb-4 border-b border-gray-100 last:border-0">
-                            <div className="flex items-baseline gap-3">
-                              <h3 className="font-bold text-lg" style={{ color: theme.secondaryColor }}>
-                                {item.name}
-                              </h3>
-                              <div className="flex-1 border-b border-dotted border-gray-300" />
-                              <span className="italic font-semibold whitespace-nowrap" style={{ color: theme.primaryColor }}>
-                                {item.price}
-                              </span>
-                            </div>
-                            {item.description && <p className="mt-2 italic text-gray-600 leading-relaxed">{item.description}</p>}
-                          </div>
-                        ))}
-                    </div>
-                  </div>
                 )}
+                <TextDishes entries={displayedItems} theme={theme} />
               </div>
             )}
 
             {menuStyle === "bar" && (
               <div className="space-y-6">
-                {displayedItems.map((item) => (
-                  <div key={item.id || item.name} className="flex gap-5 pb-5 border-b border-gray-100">
+                {displayedItems.map(({ item, category }) => (
+                  <div key={`${category}-${item.id || item.name}`} className={`flex gap-5 pb-5 border-b border-gray-100 ${item.available ? "" : "opacity-60"}`}>
                     {item.image && (
                       <div className="w-28 aspect-[4/3] rounded-xl overflow-hidden shrink-0">
                         <img src={optimizeImage(item.image, 300)} loading="lazy" alt={item.name} className="w-full h-full object-cover" />
@@ -380,6 +375,7 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
                       <div className="flex gap-3 items-baseline">
                         <h3 className="font-bold" style={{ color: theme.secondaryColor }}>
                           {item.name}
+                          <SoldOut item={item} />
                         </h3>
                         <div className="flex-1 border-b border-dotted border-gray-300" />
                         <span className="font-semibold" style={{ color: theme.primaryColor }}>
@@ -387,6 +383,7 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
                         </span>
                       </div>
                       {item.description && <p className="italic text-gray-500 mt-1">{item.description}</p>}
+                      <AddToOrder item={item} category={category} className="mt-3" />
                     </div>
                   </div>
                 ))}
@@ -394,22 +391,29 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
             )}
 
             {menuStyle === "square" && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {displayedItems
-                  .filter((item) => item.image)
-                  .map((item) => (
-                    <div key={item.id || item.name}>
-                      <div className="aspect-[4/3] rounded-2xl overflow-hidden">
-                        <img src={optimizeImage(item.image, 500)} loading="lazy" alt={item.name} className="w-full h-full object-cover" />
+              <div className="space-y-12">
+                {hasPhotos && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {displayedItems
+                    .filter(({ item }) => item.image)
+                    .map(({ item, category }) => (
+                      <div key={`${category}-${item.id || item.name}`} className={item.available ? "" : "opacity-60"}>
+                        <div className="aspect-[4/3] rounded-2xl overflow-hidden">
+                          <img src={optimizeImage(item.image, 500)} loading="lazy" alt={item.name} className="w-full h-full object-cover" />
+                        </div>
+                        <h3 className="font-bold mt-3" style={{ color: theme.secondaryColor }}>
+                          {item.name}
+                          <SoldOut item={item} />
+                        </h3>
+                        <p className="font-bold" style={{ color: theme.primaryColor }}>
+                          {item.price}
+                        </p>
+                        <AddToOrder item={item} category={category} className="mt-2" />
                       </div>
-                      <h3 className="font-bold mt-3" style={{ color: theme.secondaryColor }}>
-                        {item.name}
-                      </h3>
-                      <p className="font-bold" style={{ color: theme.primaryColor }}>
-                        {item.price}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                </div>
+                )}
+                <TextDishes entries={displayedItems} theme={theme} />
               </div>
             )}
           </div>
@@ -489,7 +493,8 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
           target="_blank"
           rel="noreferrer"
           aria-label="Chat on WhatsApp"
-          className="fixed bottom-6 right-5 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-2xl hover:scale-110 transition-transform animate-pulse"
+          style={{ bottom: "calc(1.5rem + var(--order-bar, 0px))" }}
+          className="fixed right-5 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-green-500 text-white shadow-2xl hover:scale-110 transition-transform animate-pulse"
         >
           <FaWhatsapp className="w-8 h-8" />
         </a>
@@ -499,16 +504,16 @@ export default function StandardTemplate({ restaurant }: { restaurant: PublicRes
         <div className="max-w-xs mx-auto mb-2 h-px opacity-10" style={{ backgroundColor: theme.secondaryColor }} />
         <p className="text-xs md:text-sm text-gray-400 font-medium tracking-wide">
           Powered by{" "}
-          <Link href="/" className="font-black hover:opacity-70 transition-all duration-300" style={{ color: theme.primaryColor }}>
+          <a href={ROOT_URL} className="font-black hover:opacity-70 transition-all duration-300" style={{ color: theme.primaryColor }}>
             ScanDish
-          </Link>{" "}
-          <span className="mx-1">Â·</span> Smart QR Experience
+          </a>{" "}
+          <span className="mx-1">·</span> Smart QR Experience
         </p>
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           className="mt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-300 hover:text-gray-500 transition-colors"
         >
-          Back to top â†‘
+          Back to top ↑
         </button>
       </footer>
     </main>

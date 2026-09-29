@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AuthCard, { buttonClass, inputClass, Notice } from "@/components/auth/AuthCard";
 import { BRAND } from "@/lib/brand";
+import { useContact } from "@/components/ContactProvider";
+import { contactWhatsAppUrl } from "@/lib/settings";
 import { requestPasswordReset, RESET_MESSAGES } from "@/lib/password-reset";
 
 const RESEND_SECONDS = 60;
 
 export default function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
+  const contact = useContact();
   const [email, setEmail] = useState(initialEmail);
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState("");
@@ -82,7 +85,7 @@ export default function ForgotPasswordForm({ initialEmail }: { initialEmail: str
         </p>
         <p>
           No longer have access to this email?{" "}
-          <a href={BRAND.supportWhatsApp} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: BRAND.color }}>
+          <a href={contactWhatsAppUrl(contact)} target="_blank" rel="noreferrer" className="font-semibold" style={{ color: BRAND.color }}>
             Contact support
           </a>
         </p>

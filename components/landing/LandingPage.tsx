@@ -1,590 +1,334 @@
-"use client";
-
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  QrCode,
-  Utensils,
-  MapPin,
-  Link2,
-  Paintbrush,
-  ChevronDown,
-  CheckCircle2,
-  Menu,
-  X,
-  ArrowRight,
-  Smartphone,
-  Globe,
-  Zap,
-  MousePointer2,
-  LayoutDashboard,
-  Gem,
-  Settings,
-  MessagesSquare
-} from 'lucide-react';
-import { FaInstagram, FaFacebook, FaTiktok, FaXTwitter } from "react-icons/fa6";
-import type { Pricing } from "@/lib/settings";
-
-const BRAND_COLOR = "#f08c6c";
+import Link from "next/link";
+import { ArrowRight, ArrowUpRight, Check, Minus, Plus } from "lucide-react";
+import { FaWhatsapp } from "react-icons/fa6";
+import { BRAND } from "@/lib/brand";
+import { contactTelUrl, type ContactInfo } from "@/lib/settings";
+import { marketingFonts } from "@/lib/fonts";
+import { PREMIUM_BUILD_DAYS } from "@/lib/premium";
+import { GUEST_FEATURES, OWNER_FEATURES, faqs, type FactsInput } from "@/lib/scandish-facts";
+import type { ShowcaseRestaurant } from "@/lib/server/showcase";
+import HeroVisual from "./HeroVisual";
+import LogoMarquee from "./LogoMarquee";
+import { SiteFooter, SiteHeader, START_MESSAGE, whatsappLink } from "./SiteChrome";
+import "./marketing.css";
 
 const n = (v: number) => v.toLocaleString("en-US");
 
-export default function LandingPage({ pricing }: { pricing: Pricing }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+export default function LandingPage({
+  facts,
+  restaurants,
+  exampleUrl,
+}: {
+  facts: FactsInput;
+  restaurants: ShowcaseRestaurant[];
+  exampleUrl: string;
+}) {
+  const { pricing, leader, liveCount, contact } = facts;
 
   return (
-  <main className="min-h-screen bg-white text-[#1a1a1a] selection:bg-[#f08c6c] selection:text-white overflow-x-hidden">
-      {/* 1. STICKY NAVBAR */}
-      <header 
-        className={`fixed top-0 w-full z-50 transition-all duration-500 ${
-          scrolled ? "bg-white/90 backdrop-blur-md py-3 shadow-sm border-b border-gray-100" : "bg-transparent py-6"
-        }`}
-      >
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-lg border border-gray-100">
-              <Image src="/images/logo.jpg" alt="ScanDish Logo" fill className="object-cover" />
-            </div>
-            <span className="text-2xl font-black tracking-tighter"> 
-              Scan<span style={{ color: BRAND_COLOR }}>Dish</span>
-            </span>
-          </Link>
-          <nav className="hidden lg:flex items-center gap-10">
-            {[
-              { label: "Features", href: "#features" },
-              { label: "How it Works", href: "#how-it-works" },
-              { label: "Why ScanDish", href: "#why-scandish" },
-              { label: "Pricing", href: "#pricing" },
-              { label: "Contact", href: "#contact" },
-              { label: "FAQ", href: "#faq" },
-            ].map((item) => (
+    <div className={`mk min-h-screen ${marketingFonts}`}>
+      <SiteHeader />
+
+      <main>
+        {/* ---------- Hero ---------- */}
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-12 md:grid-cols-[1.05fr_1fr] md:pb-24 md:pt-20">
+          <div>
+            <p className="rise text-sm font-medium text-[var(--coral-ink)]">QR menus for restaurants in Rwanda</p>
+            <h1 className="rise rise-2 font-display mt-4 text-[2.9rem] font-medium leading-[1.02] sm:text-6xl md:text-[4.4rem]">
+              Your menu, open on every table.
+            </h1>
+            <p className="rise rise-3 mt-6 max-w-lg text-lg leading-relaxed text-[var(--ink-2)]">
+              Guests scan the code on the table and see your dishes, photos and prices in RWF — no app, no PDF that won&apos;t
+              zoom. Change a price from your phone and it&apos;s live on the next scan.
+            </p>
+            <div className="rise rise-3 mt-8 flex flex-wrap items-center gap-3">
               <a
-                key={item.label}
-                href={item.href}
-                className="text-sm font-bold text-gray-500 hover:text-[#f08c6c] transition-colors"
+                href={whatsappLink(contact, START_MESSAGE)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3.5 font-medium text-[var(--paper)] transition hover:bg-black"
               >
-                {item.label}
+                <FaWhatsapp className="h-5 w-5" /> Get your menu page
               </a>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-4">
-            <Link
-              href="/login"
-              className="px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-xl shadow-[#f08c6c]/20 hover:scale-[1.05] transition-all"
-              style={{ backgroundColor: BRAND_COLOR }}
-            >
-              Partner Portal
-            </Link>
-            <button className="lg:hidden p-2 text-gray-900" onClick={() => setMobileOpen(!mobileOpen)}>
-              {mobileOpen ? <X size={28} /> : <Menu size={28} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Menu */}
-        <AnimatePresence>
-          {mobileOpen && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden bg-white border-b border-gray-100 overflow-hidden shadow-2xl"
-            >
-              <div className="flex flex-col p-8 gap-6">
-                <a href="#features" onClick={() => setMobileOpen(false)} className="text-xl font-bold">Features</a>
-                <a href="#how-it-works" onClick={() => setMobileOpen(false)} className="text-xl font-bold">How it Works</a>
-                <a href="#why-scandish" onClick={() => setMobileOpen(false)} className="text-xl font-bold">Why ScanDish</a>
-                <a href="#faq" onClick={() => setMobileOpen(false)} className="text-xl font-bold">FAQ</a>
-                <Link href="/login" className="py-4 rounded-2xl text-center text-white font-bold" style={{ backgroundColor: BRAND_COLOR }}>Get Started</Link>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
-
-      {/* 2. HERO SECTION */}
-      <section className="relative pt-32 pb-20 lg:pt-52 lg:pb-40 overflow-hidden bg-[#fafafa]">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#f08c6c]/10 rounded-full blur-[120px] -mr-40 -mt-20" />
-        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-[#f08c6c]/5 rounded-full blur-[100px] -ml-20" />
-
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }} 
-              animate={{ opacity: 1, y: 0 }} 
-              transition={{ duration: 0.8 }}
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#f08c6c]/10 text-[#f08c6c] text-[10px] font-black uppercase tracking-widest mb-8 border border-[#f08c6c]/20">
-                A Step to Digital Excellence
-              </div>
-              <h1 className="text-5xl md:text-7xl font-black leading-[1.1] tracking-tight mb-8">
-                Turn every QR scan into a <span style={{ color: BRAND_COLOR }}>beautiful</span> Branding Page
-              </h1>
-              <p className="text-lg md:text-xl text-gray-500 leading-relaxed max-w-xl mb-12">
-                ScanDish helps you create smart QR-powered digital menu pages. Customers scan and instantly see your menu, food gallery, social links, and more.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-5">
-                <Link
-                  href="/login"
-                  className="px-10 py-5 rounded-2xl text-white font-black text-lg shadow-2xl shadow-[#f08c6c]/30 hover:translate-y-[-4px] transition-all flex items-center justify-center gap-2"
-                  style={{ backgroundColor: BRAND_COLOR }}
-                >
-                  Start Your Restaurant Portal <ArrowRight size={20} />
-                </Link>
-                <a href="#how-it-works" className="px-10 py-5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-bold text-lg hover:bg-gray-50 transition-all text-center">
-                  See How It Works
+              {exampleUrl && (
+                <a href={exampleUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full px-4 py-3.5 font-medium text-[var(--ink)] underline decoration-[var(--line)] decoration-2 underline-offset-[6px] hover:decoration-[var(--coral)]">
+                  See a live menu <ArrowUpRight className="h-4 w-4" />
                 </a>
-              </div>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-              transition={{ duration: 1, ease: "easeOut" }}
-              className="relative flex justify-center lg:justify-end"
-            >
-              <div className="relative w-[320px] h-[650px] bg-[#1a1a1a] rounded-[3.5rem] border-[10px] border-[#1a1a1a] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.4)] overflow-hidden">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#1a1a1a] rounded-b-3xl z-30" />
-                <div className="absolute inset-0 bg-white pt-10 overflow-y-auto no-scrollbar">
-                  <div className="h-60 w-full relative">
-                    <Image 
-                        src="/images/hero.png" 
-                        alt="Delicious Dish Preview" 
-                        fill 
-                        className="object-cover"
-                        priority
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                    <div className="absolute bottom-44 left-4 text-white">
-                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">Today&apos;s Special</p>
-                        <h4 className="text-lg font-black leading-tight">Kiza Restaurant</h4>
-                    </div>
-                  </div>
-                  <div className="p-5">
-                    <div className="flex gap-2 mb-8 overflow-x-auto no-scrollbar">
-                        {['All', 'Mains', 'Drinks', 'Sides'].map((cat, i) => (
-                            <span key={i} className={`px-4 py-1.5 rounded-full text-[10px] font-bold ${i === 1 ? 'bg-[#f08c6c] text-white' : 'bg-gray-100 text-gray-400'}`}>{cat}</span>
-                        ))}
-                    </div>
-                    <div className="space-y-4">
-                        {[1, 2, 3].map(i => (
-                            <div key={i} className="flex items-center gap-4 p-3 border border-gray-50 rounded-2xl bg-[#fafafa]">
-                                <div className="w-14 h-14 bg-gray-200 rounded-xl flex-shrink-0" />
-                                <div className="flex-1">
-                                    <div className="h-3 w-2/3 bg-gray-200 rounded mb-2" />
-                                    <div className="h-2 w-1/3 bg-gray-100 rounded" />
-                                </div>
-                                <div className="text-[12px] font-black text-[#f08c6c]">frw4,500</div>
-                            </div>
-                        ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. TRUST/STAT STRIP */}
-      <section className="py-16 bg-white border-y border-gray-100">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12">
-            {[
-              { t: '1 QR Code', d: 'Unique restaurant ID', i: QrCode },
-              { t: '100% Mobile', d: 'No app download needed', i: Smartphone },
-              { t: 'Modern UI', d: 'Premium SaaS design', i: LayoutDashboard },
-              { t: 'Smart Analytics', d: 'Track every menu scan', i: Zap },
-            ].map((stat, i) => (
-              <div key={i} className="flex flex-col items-center text-center group">
-                <div className="w-12 h-12 rounded-2xl bg-[#fafafa] flex items-center justify-center text-[#f08c6c] mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                  <stat.i size={24} />
-                </div>
-                <h4 className="font-black text-sm mb-1">{stat.t}</h4>
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">{stat.d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. FEATURES SECTION */}
-      <section id="features" className="py-32 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-20">
-            <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4">Core Features</h2>
-            <h3 className="text-4xl md:text-5xl font-black tracking-tight mb-6">A toolkit for the modern restaurateur.</h3>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              { t: 'Branded Pages', d: 'Get a clean, professional public URL for your restaurant business.', i: Globe },
-              { t: 'Unique QR Code', d: 'Instant access for customers with one scan—no account required.', i: QrCode },
-              { t: 'Menu Management', d: 'Live price and availability updates from your central dashboard.', i: Utensils },
-              { t: 'Map Directions', d: 'Help customers navigate directly to your doorstep with one click.', i: MapPin },
-              { t: 'Social & Contact', d: 'Connected buttons for WhatsApp, Instagram, and phone calls.', i: Link2 },
-              { t: 'Theme Customization', d: 'Adjust colors and branding to match your venue’s physical vibe.', i: Paintbrush },
-            ].map((feature, i) => (
-              <motion.div 
-                key={i}
-                whileHover={{ y: -8 }}
-                className="p-10 rounded-[2.5rem] bg-gray-50 border border-transparent hover:border-[#f08c6c]/20 hover:bg-white hover:shadow-2xl transition-all group"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-white shadow-md flex items-center justify-center text-[#f08c6c] mb-8 group-hover:bg-[#f08c6c] group-hover:text-white transition-all">
-                  <feature.i size={28} />
-                </div>
-                <h4 className="text-xl font-black mb-4">{feature.t}</h4>
-                <p className="text-gray-500 text-sm leading-relaxed font-medium">{feature.d}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 5. PRICING SECTION - UPDATED */}
-      <section id="pricing" className="py-32 bg-[#fffcfb] px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4">Transparent Pricing</h2>
-            <h3 className="text-4xl md:text-6xl font-black tracking-tight mb-6">Choose the perfect plan.</h3>
-            <p className="text-lg text-gray-500 max-w-2xl mx-auto">Flexible options designed for every stage of your restaurant&apos;s digital growth.</p>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-8 items-stretch">
-            
-            {/* STANDARD PLAN */}
-            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-white border border-gray-100 rounded-[3rem] p-10 shadow-sm hover:shadow-2xl transition-all">
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
-                  <Utensils size={24} />
-                </div>
-                <h3 className="text-2xl font-black mb-2">Standard</h3>
-                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Essential Digital Menu</p>
-              </div>
-
-              <div className="space-y-4 mb-10">
-                <div className="flex flex-col">
-                  <span className="text-3xl font-black">{n(pricing.standard.setupFee)} <span className="text-sm text-gray-400">RWF</span></span>
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
-                </div>
-                <div className="h-px bg-gray-50 w-full" />
-                <div className="flex flex-col">
-                  <span className="text-xl font-black">{n(pricing.standard.sixMonths)} <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xl font-black">{n(pricing.standard.year)} <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
-                </div>
-              </div>
-
-              <ul className="space-y-4 mb-10 flex-grow">
-                {['QR digital menu', 'Menu categories', 'Images + text support', 'Offers section', 'Gallery', 'WhatsApp integration', 'Location & map', 'Theme colors', 'Search menu', 'Dashboard management'].map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-600">
-                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/login" className="w-full py-5 rounded-2xl bg-gray-900 text-white text-center font-black hover:bg-[#f08c6c] transition-colors">Select Standard</Link>
-            </motion.div>
-
-            {/* PREMIUM PLAN */}
-            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-white border-4 border-[#f08c6c] rounded-[3rem] p-10 shadow-2xl relative lg:scale-105 z-10">
-              <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-[#f08c6c] text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">Recommended</div>
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-[#f08c6c]/10 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
-                  <Gem size={24} />
-                </div>
-                <h3 className="text-2xl font-black mb-2">Premium</h3>
-                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Luxury Experience</p>
-              </div>
-
-              <div className="space-y-4 mb-10">
-                <div className="flex flex-col">
-                  <span className="text-3xl font-black">{n(pricing.premium.setupFee)} <span className="text-sm text-gray-400">RWF</span></span>
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">One-time Setup Fee</span>
-                </div>
-                <div className="h-px bg-gray-50 w-full" />
-                <div className="flex flex-col">
-                  <span className="text-xl font-black">{n(pricing.premium.sixMonths)} <span className="text-sm text-gray-400">RWF / 6 Months</span></span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-4xl font-black text-[#f08c6c]">{n(pricing.premium.year)} <span className="text-sm text-gray-400">RWF / 1 Year</span></span>
-                </div>
-              </div>
-
-              <ul className="space-y-4 mb-10 flex-grow">
-                <li className="flex items-center gap-3 text-sm font-black text-gray-900 mb-4 pb-4 border-b border-gray-100">
-                   Everything in Standard
-                </li>
-                {['Custom premium public page', 'Luxury restaurant UI', 'Premium branding', 'Premium template system', 'Better visual experience', 'Priority support'].map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-600">
-                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/login" className="w-full py-5 rounded-2xl text-white text-center font-black shadow-xl shadow-[#f08c6c]/30 hover:scale-[1.02] transition-all" style={{ backgroundColor: BRAND_COLOR }}>Select Premium</Link>
-            </motion.div>
-
-            {/* PREMIUM CUSTOM */}
-            <motion.div whileHover={{ y: -10 }} className="flex flex-col bg-[#1a1a1a] text-white rounded-[3rem] p-10 shadow-sm hover:shadow-2xl transition-all">
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-[#f08c6c] mb-6">
-                  <Settings size={24} />
-                </div>
-                <h3 className="text-2xl font-black mb-2">Premium Custom</h3>
-                <p className="text-gray-500 text-sm font-bold uppercase tracking-widest">Enterprise Solution</p>
-              </div>
-
-              <div className="mb-10">
-                <span className="text-3xl font-black">Negotiated</span>
-                <p className="text-gray-500 text-sm font-medium mt-2">Tailored pricing based on your unique requirements.</p>
-              </div>
-
-              <ul className="space-y-4 mb-10 flex-grow">
-                {['Fully custom restaurant system', 'Unique dashboard', 'Custom webpage', 'Booking systems', 'Future custom features', 'Enterprise build'].map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm font-bold text-gray-400">
-                    <CheckCircle2 size={18} className="text-[#f08c6c] flex-shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="#contact" className="w-full py-5 rounded-2xl bg-white text-gray-900 text-center font-black hover:bg-gray-200 transition-colors">Contact Us</Link>
-            </motion.div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* 6. HOW IT WORKS SECTION */}
-      <section id="how-it-works" className="py-32 bg-[#1a1a1a] text-white rounded-[4rem] mx-4 lg:mx-8 overflow-hidden relative">
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="text-center mb-24">
-            <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4 opacity-80">Simple Process</h2>
-            <h3 className="text-4xl md:text-5xl font-black">Ready in four steps.</h3>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-12">
-            {[
-              { s: '01', t: 'Create Account', d: 'Sign up for your secure ScanDish restaurant portal.' },
-              { s: '02', t: 'Set Up Venue', d: 'Add your menu items, gallery photos, and links.' },
-              { s: '03', t: 'Generate QR', d: 'Download your custom QR code for table printing.' },
-              { s: '04', t: 'Serve Guests', d: 'Let customers scan and browse your menu instantly.' },
-            ].map((step, i) => (
-              <div key={i} className="relative">
-                <div className="text-7xl font-black text-white/5 mb-6">{step.s}</div>
-                <h4 className="text-xl font-bold mb-3">{step.t}</h4>
-                <p className="text-gray-500 text-sm leading-relaxed">{step.d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 7. WHY SCANDISH SECTION */}
-      <section id="why-scandish" className="py-32 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-20 items-center">
-            <div className="relative">
-                <div className="relative rounded-[3rem] overflow-hidden shadow-2xl z-10">
-                    <Image src="/images/image.jpg" width={800} height={1000} alt="Professional Menu" className="w-full h-auto object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                </div>
-                <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-[#f08c6c] rounded-full blur-3xl opacity-20" />
+              )}
             </div>
-            <div>
-              <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4">Why ScanDish</h2>
-              <h3 className="text-4xl md:text-5xl font-black mb-8 leading-tight">Elevate your brand, <br/> delight your guests.</h3>
-              <div className="space-y-6">
-                {[
-                  { t: 'Professional Customer Pages', d: 'Unlike messy PDFs, ScanDish provides a smooth, native app-like experience in the browser.' },
-                  { t: 'Full Branding Control', d: 'You have 100% control over the photos, colors, and links your customers see.' },
-                  { t: 'Secure & Reliable', d: 'Built as a modern SaaS product to ensure your portal and public pages are always online.' },
-                  { t: 'Designed for Africa', d: 'Tailored for the local hospitality market, ensuring fast load times and clear layouts.' },
-                ].map((reason, i) => (
-                  <div key={i} className="flex gap-4 p-4 rounded-2xl hover:bg-gray-50 transition-colors">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#f08c6c] flex items-center justify-center text-white mt-1">
-                      <CheckCircle2 size={14} strokeWidth={3} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-lg mb-1">{reason.t}</h4>
-                      <p className="text-gray-500 text-sm font-medium">{reason.d}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <dl className="mt-10 grid max-w-md grid-cols-3 gap-4 border-t border-[var(--line)] pt-6 text-sm">
+              <Fact label="Setup from" value={`${n(pricing.standard.setupFee)} RWF`} />
+              <Fact label="Live" value={`${pricing.trialDays}-day setup period`} />
+              <Fact label="Made in" value="Kigali" />
+            </dl>
           </div>
-        </div>
-      </section>
+          <HeroVisual />
+        </section>
 
-      {/* 8. CTA BANNER */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div 
-            whileHover={{ scale: 1.01 }}
-            className="rounded-[4rem] p-16 md:p-32 text-center relative overflow-hidden text-white shadow-2xl shadow-[#f08c6c]/30" 
-            style={{ backgroundColor: BRAND_COLOR }}
-          >
-            <div className="relative z-10 max-w-2xl mx-auto">
-              <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight">Ready to open your digital portal?</h2>
-              <p className="text-white/80 mb-12 text-lg font-bold">Join the best restaurants using ScanDish today.</p>
-              <Link href="/login" className="inline-flex items-center gap-3 bg-white text-[#f08c6c] px-12 py-5 rounded-2xl font-black text-xl hover:shadow-3xl transition-all">
-                Get Started Now <MousePointer2 size={24} />
-              </Link>
-            </div>
-            <div className="absolute top-0 right-0 p-10 opacity-10"><QrCode size={200} /></div>
-          </motion.div>
-        </div>
-      </section>
+        <LogoMarquee restaurants={restaurants} liveCount={liveCount} />
 
-      {/* 9. FAQ SECTION */}
-      <section id="faq" className="py-32 bg-white">
-        <div className="max-w-3xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-[#f08c6c] font-black uppercase tracking-[0.3em] text-[10px] mb-4">Common Questions</h2>
-            <h3 className="text-4xl font-black tracking-tight">Need help?</h3>
-          </div>
-          <div className="space-y-4">
+        {/* ---------- How it works ---------- */}
+        <section id="how-it-works" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-20 md:py-28">
+          <SectionTitle kicker="How it works" title="Three steps, and your guests are reading your menu." />
+          <ol className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
             {[
-              { q: 'What is ScanDish?', a: 'ScanDish is a professional SaaS platform that allows restaurants to create beautiful, web-based digital menu pages linked to unique QR codes.' },
-              { q: 'Do customers need accounts?', a: 'No. ScanDish is a web app. Customers scan the QR code and your menu page opens directly in their browser instantly.' },
-              { q: 'Can restaurants customize their page?', a: 'Yes! You can manage branding, colors, photos, and menu items via your secure restaurant portal.' },
-              { q: 'Is ScanDish mobile-friendly?', a: 'ScanDish is 100% optimized for mobile devices, ensuring a premium experience for every diner.' },
-            ].map((faq, i) => (
-              <div key={i} className="border border-gray-100 rounded-3xl bg-gray-50 overflow-hidden">
-                <button 
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center justify-between p-8 text-left font-black text-lg"
-                >
-                  {faq.q}
-                  <ChevronDown className={`transition-transform duration-500 ${openFaq === i ? 'rotate-180 text-[#f08c6c]' : ''}`} />
-                </button>
-                <AnimatePresence>
-                  {openFaq === i && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="px-8 pb-8 text-gray-500 font-medium leading-relaxed"
-                    >
-                      {faq.a}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              ["We set you up", "A ScanDish team member comes by, takes your menu and photos, and builds your page with you. You get your own login."],
+              ["Print your QR code", "Download it from your dashboard and put it on every table, at the counter and on the door. One code, never reprinted."],
+              ["Update whenever you like", "Sold out, new dish, new price? Change it on your phone. Guests see it on their next scan."],
+            ].map(([t, d], i) => (
+              <li key={t} className="border-t-2 border-[var(--ink)] pt-5">
+                <span className="font-display text-5xl font-light text-[var(--coral-ink)]">{i + 1}</span>
+                <h3 className="mt-3 text-xl font-semibold">{t}</h3>
+                <p className="mt-2 leading-relaxed text-[var(--ink-2)]">{d}</p>
+              </li>
             ))}
-          </div>
-        </div>
-      </section>
+          </ol>
+        </section>
 
-      {/* 10. CONTACT SECTION */}
-      <section id="contact" className="py-24 px-6 bg-white overflow-hidden">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 text-gray-900 tracking-tight">
-              Get in Touch
-            </h2>
-            <div className="w-16 h-1 bg-[#f08c6c] mx-auto rounded-full mb-6"></div>
-            <p className="text-gray-600 text-lg mb-12 max-w-md mx-auto">
-              Ready to digitize your menu? Our team is here to help you get started.
+        {/* ---------- Guests / owners ---------- */}
+        <section className="bg-[var(--ink)] text-[var(--paper)]">
+          <div className="mx-auto grid max-w-6xl gap-14 px-5 py-20 md:grid-cols-2 md:py-28">
+            <FeatureList
+              kicker="For your guests"
+              title="A menu that works on any phone."
+              items={GUEST_FEATURES}
+            />
+            <FeatureList
+              kicker="For you"
+              title="Run it from your phone."
+              items={OWNER_FEATURES}
+            />
+          </div>
+        </section>
+
+        {/* ---------- Premium ---------- */}
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-20 md:grid-cols-2 md:py-28">
+          <div>
+            <SectionTitle kicker="Premium" title="A page designed only for your restaurant." />
+            <p className="mt-5 max-w-md leading-relaxed text-[var(--ink-2)]">
+              Our team designs a page around your place — its colours, its mood, its food — and publishes it within{" "}
+              {PREMIUM_BUILD_DAYS.min}–{PREMIUM_BUILD_DAYS.max} working days. It lives at its own address, easy to say out loud and
+              easy to find on Google.
             </p>
           </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <a 
-              href="tel:0781822350"
-              className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-left-8 duration-700"
-            >
-              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
-                <Smartphone className="w-6 h-6 text-[#f08c6c]" />
-              </div>
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Call Us</h3>
-              <p className="text-2xl font-bold text-gray-800">0781822350</p>
-            </a>
-
-            <a 
-              href="mailto:support@scandish.online"
-              className="group p-8 bg-[#fff8f5] rounded-3xl border border-transparent hover:border-[#f08c6c] hover:bg-white hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 animate-in fade-in slide-in-from-right-8 duration-1000"
-            >
-              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
-                <MessagesSquare className="w-6 h-6 text-[#f08c6c]" />
-              </div>
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">Email Us</h3>
-              <p className="text-2xl font-bold text-gray-800 truncate">support@scandish.online</p>
-            </a>
+          <div className="rounded-2xl border border-[var(--line)] bg-white p-3 shadow-[0_30px_60px_-40px_rgba(29,23,18,0.5)]">
+            <div className="flex items-center gap-2 rounded-lg bg-[var(--paper-2)] px-3 py-2 text-sm">
+              <span className="flex gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#e4d9cc]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#e4d9cc]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#e4d9cc]" />
+              </span>
+              <span className="ml-2 truncate font-mono text-[13px] text-[var(--ink-2)]">
+                <span className="text-[var(--coral-ink)]">yourrestaurant</span>.scandish.online
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {["/images/food2.jpg", "/images/fries.jpg", "/images/juice.jpg"].map((src) => (
+                <img key={src} src={src} alt="" loading="lazy" className="aspect-[4/5] w-full rounded-lg object-cover" />
+              ))}
+            </div>
+            <p className="font-display px-1 pb-1 pt-4 text-2xl">Your name, your style.</p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* 11. FOOTER */}
-      <footer className="bg-gray-200 pt-32 pb-12 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-16 mb-24">
-            <div className="col-span-1 md:col-span-1">
-              <Link href="/" className="flex items-center gap-2 mb-8">
-                <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-sm">
-                  <Image src="/images/logo.jpg" alt="ScanDish" fill />
-                </div>
-                <span className="text-2xl font-black tracking-tighter">ScanDish</span>
-              </Link>
-              <p className="text-gray-400 text-sm font-bold leading-relaxed mb-8">
-                Modernizing the dining experience across Africa with smart technology.
+        {/* ---------- Pricing ---------- */}
+        <section id="pricing" className="scroll-mt-20 border-t border-[var(--line)] bg-[var(--paper-2)]">
+          <div className="mx-auto max-w-6xl px-5 py-20 md:py-28">
+            <SectionTitle kicker="Pricing" title="Clear prices, in Rwandan francs." />
+            <div className="mt-12 grid gap-5 md:grid-cols-2">
+              <Plan
+                contact={contact}
+                name="Standard"
+                line="A professional menu page in the ScanDish design."
+                p={pricing.standard}
+                items={["Full menu with photos and prices", "Offers, gallery and your story", "WhatsApp, call and directions buttons", "Your colours and logo", "Menu views and busy hours", "Printable QR code"]}
+              />
+              <Plan
+                contact={contact}
+                name="Premium"
+                line="Everything in Standard, designed only for you."
+                p={pricing.premium}
+                featured
+                items={[
+                  `Unique design, ready in ${PREMIUM_BUILD_DAYS.min}–${PREMIUM_BUILD_DAYS.max} working days`,
+                  "Your own address: yourname.scandish.online",
+                  "Priority support",
+                  "Everything in Standard",
+                ]}
+              />
+            </div>
+            <p className="mt-6 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
+              Your page goes live as soon as it&apos;s created, with a {pricing.trialDays}-day setup period to check everything before the
+              subscription starts. Need bookings, delivery or a fully custom system?{" "}
+              <a href={whatsappLink(contact, "Hello ScanDish, I'd like to talk about a custom system.")} target="_blank" rel="noreferrer" className="font-medium text-[var(--ink)] underline underline-offset-4">
+                Let&apos;s talk
+              </a>
+              .
+            </p>
+          </div>
+        </section>
+
+        {/* ---------- Company ---------- */}
+        <section className="mx-auto max-w-6xl px-5 py-20 md:py-28">
+          <div className="grid gap-10 md:grid-cols-[1fr_1.2fr]">
+            <SectionTitle kicker="Who we are" title="Built in Kigali, for the way people eat here." />
+            <div className="space-y-5 text-lg leading-relaxed text-[var(--ink-2)]">
+              <p>
+                Paper menus get stained and go out of date. PDFs are slow to open and impossible to read on a small screen. ScanDish
+                replaces both with a page that loads fast on any phone and that the owner controls completely.
               </p>
-              <div className="flex gap-4">
-                <a href="https://instagram.com/scandish_app" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 hover:text-[#f08c6c] shadow-sm transition-colors"><FaInstagram /></a>
-                <a href="https://tiktok.com/@scandish_app" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 hover:text-[#f08c6c] shadow-sm transition-colors"><FaTiktok /></a>
-                <a href="https://x.com/scandish_app" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 hover:text-[#f08c6c] shadow-sm transition-colors"><FaXTwitter /></a>
-                <a href="https://facebook.com/scandish_app" className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 hover:text-[#f08c6c] shadow-sm transition-colors"><FaFacebook /></a>
-              </div>
-            </div>
-
-            <div>
-              <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">Features</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-500">
-                <li><a href="#features" className="hover:text-[#f08c6c]">Digital Menu</a></li>
-                <li><a href="#features" className="hover:text-[#f08c6c]">Custom QR</a></li>
-                <li><a href="#features" className="hover:text-[#f08c6c]">Branding</a></li>
-              </ul>
-            </div>
-            <div>
-              <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">MAIN LINKS</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-500">
-                <li><a href="/login" className="hover:text-[#f08c6c]">Login</a></li>
-                <li><a href="/company-signup" className="hover:text-[#f08c6c]">Signup</a></li>
-                <li><a href="#pricing" className="hover:text-[#f08c6c]">Pricing</a></li>
-                <li><a href="#features" className="hover:text-[#f08c6c]">Features</a></li>
-                <li><a href="#contact" className="hover:text-[#f08c6c]">Contact</a></li>
-              </ul>  
-            </div>
-            <div>
-              <h5 className="font-black text-xs uppercase tracking-[0.3em] text-gray-900 mb-8">Legal</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-500">
-                <li><Link href="/privacy" className="hover:text-[#f08c6c]">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-[#f08c6c]">Terms of Service</Link></li>
-                <li><Link href="/support/login" className="hover:text-[#f08c6c]">Support Team</Link></li>
-              </ul>
+              <p>
+                ScanDish is made by {BRAND.company}
+                {leader.name ? (
+                  <>
+                    , led by <span className="font-medium text-[var(--ink)]">{leader.name}</span>
+                    {leader.title ? `, ${leader.title}` : ""}
+                  </>
+                ) : null}
+                {/* "Inc." already ends the sentence when no leader is named. */}
+                {leader.name ? ". " : " "}We onboard every restaurant in person and stay reachable on WhatsApp.
+              </p>
+              <Link href="/about" className="inline-flex items-center gap-1.5 font-medium text-[var(--ink)] underline decoration-[var(--line)] decoration-2 underline-offset-[6px] hover:decoration-[var(--coral)]">
+                Everything about ScanDish <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </div>
+        </section>
 
-          <div className="pt-12 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-6 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">
-            <p>© {new Date().getFullYear()} ScanDish Platform. All rights reserved.</p>
-            <div className="flex gap-8">
-              <span><a href="https://ironiclab.site" target="_blank" rel="noreferrer" className="hover:text-[#f08c6c]">A product of Ironic Lab Inc.</a></span>
+        {/* ---------- FAQ ---------- */}
+        <section id="faq" className="scroll-mt-20 border-t border-[var(--line)]">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 py-20 md:grid-cols-[1fr_1.6fr] md:py-28">
+            <SectionTitle kicker="Questions" title="What owners usually ask." />
+            <div className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
+              {faqs(facts)
+                .slice(1, 8)
+                .map((f) => (
+                  <details key={f.q} className="group py-1">
+                    <summary className="flex items-center justify-between gap-4 py-4 text-lg font-medium">
+                      {f.q}
+                      <Plus className="h-5 w-5 shrink-0 text-[var(--muted)] group-open:hidden" />
+                      <Minus className="hidden h-5 w-5 shrink-0 text-[var(--muted)] group-open:block" />
+                    </summary>
+                    <p className="pb-5 pr-8 leading-relaxed text-[var(--ink-2)]">{f.a}</p>
+                  </details>
+                ))}
             </div>
           </div>
-        </div>
-      </footer>
-    </main>
+        </section>
+
+        {/* ---------- Contact ---------- */}
+        <section className="px-5 pb-20">
+          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 rounded-3xl bg-[var(--coral)] px-7 py-12 text-[var(--ink)] md:flex-row md:items-end md:px-12 md:py-14">
+            <div>
+              <h2 className="font-display max-w-xl text-4xl font-medium leading-tight md:text-5xl">Want your menu on ScanDish?</h2>
+              <p className="mt-3 max-w-md text-[var(--ink)]/80">
+                Send us a message. We&apos;ll come to your restaurant and set everything up with you.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <a href={whatsappLink(contact, START_MESSAGE)} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3.5 font-medium text-[var(--paper)] hover:bg-black">
+                <FaWhatsapp className="h-5 w-5" /> WhatsApp us
+              </a>
+              <a href={contactTelUrl(contact)} className="inline-flex items-center justify-center rounded-full border-2 border-[var(--ink)] px-6 py-3 font-medium">
+                Call {contact.phone}
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <SiteFooter />
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[var(--muted)]">{label}</dt>
+      <dd className="mt-1 font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+export function SectionTitle({ kicker, title, light = false }: { kicker: string; title: string; light?: boolean }) {
+  return (
+    <div>
+      <p className={`text-sm font-medium ${light ? "text-[var(--coral)]" : "text-[var(--coral-ink)]"}`}>{kicker}</p>
+      <h2 className="font-display mt-3 max-w-xl text-4xl font-medium leading-[1.08] md:text-5xl">{title}</h2>
+    </div>
+  );
+}
+
+function FeatureList({ kicker, title, items }: { kicker: string; title: string; items: string[] }) {
+  return (
+    <div>
+      <SectionTitle kicker={kicker} title={title} light />
+      <ul className="mt-8 divide-y divide-white/10 border-y border-white/10">
+        {items.map((i) => (
+          <li key={i} className="flex gap-3 py-3.5 leading-relaxed text-[var(--paper)]/85">
+            <Check className="mt-1 h-4 w-4 shrink-0 text-[var(--coral)]" />
+            {i}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Plan({
+  contact,
+  name,
+  line,
+  p,
+  items,
+  featured = false,
+}: {
+  contact: ContactInfo;
+  name: string;
+  line: string;
+  p: { setupFee: number; sixMonths: number; year: number };
+  items: string[];
+  featured?: boolean;
+}) {
+  return (
+    <div className={`flex flex-col rounded-2xl p-7 md:p-9 ${featured ? "bg-[var(--ink)] text-[var(--paper)]" : "border border-[var(--line)] bg-[var(--paper)]"}`}>
+      <h3 className="font-display text-3xl font-medium">{name}</h3>
+      <p className={`mt-1 ${featured ? "text-[var(--paper)]/70" : "text-[var(--muted)]"}`}>{line}</p>
+      <dl className={`mt-7 space-y-3 border-y py-5 ${featured ? "border-white/15" : "border-[var(--line)]"}`}>
+        {(
+          [
+            ["One-time setup", p.setupFee],
+            ["6 months", p.sixMonths],
+            ["1 year", p.year],
+          ] as const
+        ).map(([label, v]) => (
+          <div key={label} className="flex items-baseline justify-between gap-4">
+            <dt className={featured ? "text-[var(--paper)]/70" : "text-[var(--muted)]"}>{label}</dt>
+            <dd>
+              <span className="font-display text-2xl font-medium">{n(v)}</span> <span className="text-sm">RWF</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <ul className="mt-6 flex-1 space-y-2.5">
+        {items.map((i) => (
+          <li key={i} className="flex gap-2.5">
+            <Check className={`mt-1 h-4 w-4 shrink-0 ${featured ? "text-[var(--coral)]" : "text-[var(--coral-ink)]"}`} />
+            {i}
+          </li>
+        ))}
+      </ul>
+      <a
+        href={whatsappLink(contact, `Hello ScanDish, I'm interested in the ${name} plan.`)}
+        target="_blank"
+        rel="noreferrer"
+        className={`mt-8 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 font-medium ${
+          featured ? "bg-[var(--coral)] text-[var(--ink)]" : "bg-[var(--ink)] text-[var(--paper)]"
+        }`}
+      >
+        Choose {name} <ArrowRight className="h-4 w-4" />
+      </a>
+    </div>
   );
 }

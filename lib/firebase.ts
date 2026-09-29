@@ -1,5 +1,6 @@
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { prepareUpload } from "./compress-image";
 
 // Public web config (safe to ship). The browser only uses Firebase for sign-in;
 // all data access goes through server actions.
@@ -12,7 +13,7 @@ const firebaseConfig = {
   appId: "1:308366757637:web:d4a31102499021ba70f16c",
 };
 
-const app = getApps()[0] ?? initializeApp(firebaseConfig);
+export const app = getApps()[0] ?? initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
@@ -22,10 +23,11 @@ export async function getIdToken(): Promise<string> {
   return user.getIdToken();
 }
 
-/** Admin only: stores the contract stamp/signature privately and returns its id (never a public URL). */
-export async function uploadPrivateAsset(file: File, purpose: "contract-stamp" | "contract-signature"): Promise<string> {
+/** Stores a contract stamp/signature (MasterAdmin) or certificate privately and returns its id (never a public URL). */
+export async function uploadPrivateAsset(file: File, purpose: "contract-stamp" | "contract-signature" | "certificate"): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file);
+  // Stamp and signature keep their exact pixels (transparent PNG); certificates are shrunk like photos.
+  formData.append("file", purpose === "certificate" ? await prepareUpload(file) : file);
   formData.append("purpose", purpose);
   const res = await fetch("/api/upload", {
     method: "POST",
@@ -39,7 +41,7 @@ export async function uploadPrivateAsset(file: File, purpose: "contract-stamp" |
 
 export async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", await prepareUpload(file));
   const res = await fetch("/api/upload", {
     method: "POST",
     headers: { Authorization: `Bearer ${await getIdToken()}` },

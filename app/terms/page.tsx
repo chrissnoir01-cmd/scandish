@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import LegalPage, { type LegalSection } from "@/components/legal/LegalPage";
 import { BRAND } from "@/lib/brand";
+import type { ContactInfo } from "@/lib/settings";
+import { getContact } from "@/lib/server/settings";
 import { GRACE_DAYS } from "@/lib/subscription";
 
 export const metadata: Metadata = {
@@ -10,9 +12,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/terms" },
 };
 
-const email = <a href={`mailto:${BRAND.supportEmail}`}>{BRAND.supportEmail}</a>;
-
-const sections: LegalSection[] = [
+/** Built per render so the contact details are always the current ones (MasterAdmin → Settings). */
+const buildSections = (contact: ContactInfo): LegalSection[] => {
+  const email = <a href={`mailto:${contact.email}`}>{contact.email}</a>;
+  return [
   {
     id: "agreement",
     title: "Who we are and this agreement",
@@ -131,7 +134,7 @@ const sections: LegalSection[] = [
       <p>
         We work to keep ScanDish available and fast, but we do not guarantee uninterrupted or error-free operation.
         Planned maintenance, outages of third-party providers and events outside our reasonable control may cause
-        interruptions. Support is available through {email} and WhatsApp at {BRAND.supportPhone}.
+        interruptions. Support is available through {email} and WhatsApp at {contact.phone}.
       </p>
     ),
   },
@@ -218,7 +221,7 @@ const sections: LegalSection[] = [
     title: "Contact",
     body: (
       <p>
-        {BRAND.company} — ScanDish · Kigali, Rwanda · {email} · {BRAND.supportPhone} ·{" "}
+        {BRAND.company} — ScanDish · Kigali, Rwanda · {email} · {contact.phone} ·{" "}
         <a href={BRAND.companyUrl} target="_blank" rel="noreferrer">
           ironiclab.site
         </a>
@@ -226,8 +229,10 @@ const sections: LegalSection[] = [
     ),
   },
 ];
+};
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const contact = await getContact();
   return (
     <LegalPage
       title="Terms of Service"
@@ -238,7 +243,7 @@ export default function TermsPage() {
           your content and our responsibilities.
         </p>
       }
-      sections={sections}
+      sections={buildSections(contact)}
     />
   );
 }

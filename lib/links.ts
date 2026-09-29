@@ -39,6 +39,17 @@ export function optimizeImage(url: string, width = 800): string {
   return url.replace("/upload/", `/upload/f_auto,q_auto,w_${width}/`);
 }
 
+const HERO_WIDTHS = [640, 960, 1280, 1600, 2000];
+
+/**
+ * A full-width photo (page cover) at the right size for each screen: phones download a phone-sized
+ * file instead of a desktop one. Non-Cloudinary images are used as they are.
+ */
+export function responsiveImage(url: string, sizes = "100vw"): { src: string; srcSet?: string; sizes?: string } {
+  if (!url || !url.includes("res.cloudinary.com") || !url.includes("/upload/")) return { src: url };
+  return { src: optimizeImage(url, 1600), srcSet: HERO_WIDTHS.map((w) => `${optimizeImage(url, w)} ${w}w`).join(", "), sizes };
+}
+
 export async function sharePage(title: string, text: string) {
   const url = window.location.href;
   try {

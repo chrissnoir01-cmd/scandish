@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { BRAND, formatRwf } from "@/lib/brand";
-import { agentEarning, type Pricing } from "@/lib/settings";
+import { agentEarning, type ContactInfo, type Pricing } from "@/lib/settings";
 import type { LegalSection } from "./LegalPage";
 
-const email = <a href={`mailto:${BRAND.supportEmail}`}>{BRAND.supportEmail}</a>;
 
 const pct = (n: number) => `${Number(n.toFixed(2))}%`;
 
 /** The Support Team Agreement every support member accepts at signup. Shown publicly and in the portal. */
-export const supportAgreementSections = (pricing: Pricing): LegalSection[] => [
+export const supportAgreementSections = (pricing: Pricing, contact: ContactInfo): LegalSection[] => {
+  const email = <a href={`mailto:${contact.email}`}>{contact.email}</a>;
+  return [
   {
     id: "parties",
     title: "The parties and your role",
@@ -167,9 +168,10 @@ export const supportAgreementSections = (pricing: Pricing): LegalSection[] => [
           continuing to use the portal after that means you accept them.
         </p>
         <p>
-          Contact: {BRAND.company} — ScanDish · {email} · {BRAND.supportPhone}
+          Contact: {BRAND.company} — ScanDish · {email} · {contact.phone}
         </p>
       </>
     ),
   },
 ];
+};

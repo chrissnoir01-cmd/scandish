@@ -1,6 +1,9 @@
 import "server-only";
 import { unstable_cache, revalidateTag } from "next/cache";
+import { destroyImages, publicIdFromUrl } from "./cloudinary";
 import { adminDb } from "./firebase-admin";
+import { normalizeDesign } from "../design";
+import { premiumPending } from "../premium";
 import { daysRemaining, inTrial, isPubliclyVisible } from "../subscription";
 import type {
   CompanyStatus,
@@ -15,18 +18,20 @@ import type {
 
 type Doc = Record<string, unknown>;
 
-const TEMPLATES: PremiumTemplate[] = ["default", "camellia", "sample", "freshy"];
+const TEMPLATES: PremiumTemplate[] = ["default", "camellia", "sample", "freshy", "studio"];
 
 export const restaurantTag = (slug: string) => `restaurant:${slug}`;
 
 export function revalidateRestaurant(slug: string | undefined) {
   if (slug) revalidateTag(restaurantTag(slug), { expire: 0 });
+  // A new logo, name, address or status can change the homepage's customer row.
+  revalidateTag("showcase", "max");
 }
 
 const s = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Lenient read of a stored restaurant document; never throws on legacy shapes. */
-function toContent(d: Doc): RestaurantContent {
+export function toContent(d: Doc): RestaurantContent {
   const social = (d.social ?? {}) as Doc;
   const theme = (d.theme ?? {}) as Doc;
   const menu = Array.isArray(d.menu) ? (d.menu as Doc[]) : [];
@@ -102,6 +107,9 @@ async function loadPublicRestaurant(slug: string): Promise<PublicRestaurant | nu
     plan: toPlan(data.plan),
     premiumEnabled: data.premiumEnabled === true,
     premiumTemplate: template,
+    design: template === "studio" && data.design ? normalizeDesign(data.design) : null,
+    subdomain: s(data.subdomain),
+    ordering: toPlan(data.plan) === "premium" && data.ordersOpen === true,
   };
 }
 
@@ -116,10 +124,11 @@ export function getPublicRestaurant(slug: string) {
   })();
 }
 
-export async function listPublicSlugs(): Promise<string[]> {
+/** Every publicly visible page, with its subdomain when it has one (for the sitemap). */
+export async function listPublicPages(): Promise<{ slug: string; subdomain: string }[]> {
   const db = adminDb();
   const [restaurants, companies] = await Promise.all([
-    db.collection("restaurants").select("slug", "companyId").get(),
+    db.collection("restaurants").select("slug", "companyId", "subdomain").get(),
     db.collection("companies").select("status", "subscriptionEnd", "trialEndsAt").get(),
   ]);
   const visible = new Set(
@@ -131,20 +140,23 @@ export async function listPublicSlugs(): Promise<string[]> {
   );
   return restaurants.docs
     .filter((r) => visible.has(r.get("companyId")) && r.get("slug"))
-    .map((r) => r.get("slug") as string);
+    .map((r) => ({ slug: r.get("slug") as string, subdomain: s(r.get("subdomain")) }));
 }
 
 export async function getDashboardData(uid: string): Promise<DashboardData | null> {
   const db = adminDb();
-  const snap = await db.collection("restaurants").doc(uid).get();
+  // The owner's account record doesn't depend on the restaurant, so read both at once.
+  const [snap, owner] = await Promise.all([db.collection("restaurants").doc(uid).get(), db.collection("users").doc(uid).get()]);
   if (!snap.exists) return null;
   const data = snap.data() as Doc;
 
   let subscription: DashboardData["subscription"] = null;
+  let premiumDueAt = "";
   const companyId = s(data.companyId);
   if (companyId) {
     const c = (await db.collection("companies").doc(companyId).get()).data();
     if (c) {
+      premiumDueAt = s(c.premiumDueAt);
       const trial = { subscriptionEnd: s(c.subscriptionEnd), trialEndsAt: s(c.trialEndsAt) };
       subscription = {
         status: c.status === "active" ? "active" : "inactive",
@@ -155,13 +167,16 @@ export async function getDashboardData(uid: string): Promise<DashboardData | nul
     }
   }
 
-  const owner = await db.collection("users").doc(uid).get();
   return {
     ...toContent(data),
     slug: s(data.slug),
     plan: toPlan(data.plan),
     subscription,
     mustChangePassword: owner.get("mustChangePassword") === true,
+    subdomain: s(data.subdomain),
+    premiumPending: premiumPending(data),
+    premiumDueAt: premiumPending(data) ? premiumDueAt : "",
+    ordersOpen: toPlan(data.plan) === "premium" && data.ordersOpen === true,
   };
 }
 
@@ -197,18 +212,34 @@ function describeChanges(before: RestaurantContent, after: RestaurantContent): s
     });
 }
 
+/** Every image a page uses: logo, cover, dish photos and gallery. */
+export function contentImages(c: RestaurantContent): string[] {
+  return [c.logo, c.coverImage, ...c.menu.flatMap((cat) => cat.items.map((i) => i.image)), ...c.gallery].filter(Boolean);
+}
+
 /** Writes only owner-editable fields; plan, slug and company links are untouchable here. */
 export async function saveRestaurantContent(
   uid: string,
   content: RestaurantContent
-): Promise<{ slug: string; name: string; changes: string[] }> {
+): Promise<{ slug: string; name: string; changes: string[]; imagesDeleted: number }> {
   const ref = adminDb().collection("restaurants").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Restaurant not found");
 
-  const changes = describeChanges(toContent(snap.data() as Doc), content);
+  const before = toContent(snap.data() as Doc);
+  const changes = describeChanges(before, content);
   await ref.set({ ...content, updatedAt: new Date().toISOString() }, { merge: true });
   const slug = s(snap.get("slug"));
   revalidateRestaurant(slug);
-  return { slug, name: content.name, changes };
+
+  // Images replaced or removed in this save are deleted from Cloudinary — only files in this
+  // owner's own upload folder, and only after the new content is safely stored.
+  const kept = new Set(contentImages(content));
+  const removed = contentImages(before)
+    .filter((url) => !kept.has(url))
+    .map(publicIdFromUrl)
+    .filter((id): id is string => Boolean(id?.startsWith(`scandish/${uid}/`)));
+  const imagesDeleted = removed.length ? await destroyImages(removed) : 0;
+
+  return { slug, name: content.name, changes, imagesDeleted };
 }

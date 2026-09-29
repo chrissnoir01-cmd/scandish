@@ -6,6 +6,8 @@ import { getPricing, getPricingFresh } from "@/lib/server/settings";
 import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { logActivity } from "@/lib/server/activity";
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
+import { premiumDueDate } from "@/lib/premium";
+import { validateCertificateId } from "@/lib/server/certificates";
 import { generateTempPassword, uniqueSlug } from "@/lib/server/ids";
 import { restaurantForCompany } from "@/lib/server/onboarding";
 import { fail } from "@/lib/server/result";
@@ -109,13 +111,17 @@ export interface NewBusinessInput {
   email: string;
   location: string;
   businessType: string;
+  /** Business registration (RDB) number and the certificate id returned by /api/upload. */
+  certificateNumber: string;
+  certificateId: string;
   plan: Plan;
   notes: string;
 }
 
 /**
  * Creates the company, its manager's login with a temporary password, and the restaurant record.
- * The page stays offline until MasterAdmin activates the subscription.
+ * Live for the setup period, then offline until MasterAdmin confirms the subscription.
+ * Premium pages are built by ScanDish within PREMIUM_BUILD_DAYS working days; until then the Standard design shows.
  */
 export async function createBusiness(
   idToken: string,
@@ -130,6 +136,10 @@ export async function createBusiness(
     const email = str(input.email, 200, "Manager email").toLowerCase();
     if (!companyName || !managerName || !phone) throw new ValidationError("Business name, manager name and phone are required");
     if (!EMAIL.test(email)) throw new ValidationError("A valid manager email is required — it is their login");
+    const certificateNumber = str(input.certificateNumber, 60, "Registration number");
+    if (!certificateNumber) throw new ValidationError("Enter the business registration (RDB) number");
+    const certificateId = validateCertificateId(input.certificateId, user.uid);
+    if (!certificateId) throw new ValidationError("Upload the RDB registration certificate");
     const plan: Plan = input.plan === "premium" ? "premium" : "standard";
 
     const db = adminDb();
@@ -153,7 +163,8 @@ export async function createBusiness(
       location: str(input.location, 500, "Location"),
       businessType: str(input.businessType, 80, "Business type") || "Restaurant",
       notes: str(input.notes, 2000, "Notes"),
-      certificateNumber: "",
+      certificateNumber,
+      certificateId,
       certificateUrl: "",
       subscriptionStart: "",
       subscriptionEnd: "",
@@ -165,6 +176,7 @@ export async function createBusiness(
       plan,
       premiumEnabled: false,
       premiumTemplate: "default",
+      ...(plan === "premium" ? { premiumRequestedAt: now, premiumDueAt: premiumDueDate(now) } : {}),
       setupFee,
       agentEarning: earning,
       agentSharePct: pricing[plan].agentSharePct,
@@ -203,10 +215,12 @@ export async function createBusiness(
 
     await logActivity({
       type: "support.business_created",
-      message: `${agent.name} created ${companyName} (${plan}) for ${managerName} <${email}> — live for ${pricing.trialDays}-day setup period`,
+      message:
+        `${agent.name} created ${companyName} (${plan}, RDB ${certificateNumber}) for ${managerName} <${email}> — live for ${pricing.trialDays}-day setup period` +
+        (plan === "premium" ? "; Premium page to build" : ""),
       actor: { uid: user.uid, email: user.email },
       target: { kind: "company", id: companyRef.id, name: companyName },
-      meta: { plan, setupFee, agentEarning: earning, slug, trialEndsAt },
+      meta: { plan, setupFee, agentEarning: earning, slug, trialEndsAt, ...(plan === "premium" ? { premiumDueAt: company.premiumDueAt ?? "" } : {}) },
     });
     revalidateRestaurant(slug);
     return { ok: true, data: { tempPassword, email, slug, companyId: companyRef.id } };

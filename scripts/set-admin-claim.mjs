@@ -1,5 +1,6 @@
 // Grants (or with --revoke, removes) MasterAdmin access for an existing account.
-// Usage: npm run set-admin -- admin@scandish.com [--revoke]
+// Usage: npm run set-admin -- admin@scandish.online [--revoke]
+// Admin rights belong to the account (uid), not the address: a deleted and re-created account needs this again.
 import { cert, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 

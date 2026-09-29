@@ -3,6 +3,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { AuthError, requireUser } from "./auth";
 import { adminDb } from "./firebase-admin";
+import { premiumPending } from "../premium";
 import { inTrial, isPubliclyVisible } from "../subscription";
 import type { AgentBusiness, AgentStatus, OnboardingState, SupportAgent } from "../types";
 
@@ -103,6 +104,10 @@ export async function businessesForAgent(agentId: string): Promise<AgentBusiness
         plan: d.plan === "premium" ? "premium" : "standard",
         slug: slugByUid.get(s(d.ownerUid)) || s(d.slug),
         state,
+        registrationNumber: s(d.certificateNumber),
+        hasCertificate: Boolean(s(d.certificateId) || s(d.certificateUrl)),
+        premiumPending: premiumPending(d),
+        premiumDueAt: premiumPending(d) ? s(d.premiumDueAt) : "",
         managerHasLoggedIn: Boolean(s(owner.firstLoginAt)),
         passwordChanged: owner.mustChangePassword !== true,
         setupFee: n(d.setupFee),

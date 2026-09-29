@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import LegalPage from "@/components/legal/LegalPage";
 import { supportAgreementSections } from "@/components/legal/supportAgreement";
 import { BRAND } from "@/lib/brand";
-import { getPricing } from "@/lib/server/settings";
+import { getContact, getPricing } from "@/lib/server/settings";
 
 export const metadata: Metadata = {
   title: "Support Team Agreement",
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export const revalidate = 3600;
 
 export default async function SupportAgreementPage() {
-  const pricing = await getPricing();
+  const [pricing, contact] = await Promise.all([getPricing(), getContact()]);
   return (
     <LegalPage
       title="Support Team Agreement"
@@ -24,7 +24,7 @@ export default async function SupportAgreementPage() {
           governs ScanDish. Every member accepts it when creating their portal password.
         </p>
       }
-      sections={supportAgreementSections(pricing)}
+      sections={supportAgreementSections(pricing, contact)}
     />
   );
 }

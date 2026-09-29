@@ -8,7 +8,7 @@ export interface ContractData {
   /** Template body with placeholders already filled in. */
   body: string;
   company: { name: string; url: string; email: string; phone: string };
-  business: { name: string; type: string; manager: string; email: string; phone: string; location: string };
+  business: { name: string; type: string; registration: string; manager: string; email: string; phone: string; location: string };
   fees: { plan: string; setupFee: string; sixMonths: string; year: string };
   signatory: { name: string; title: string };
   signature: Uint8Array | null;
@@ -129,7 +129,7 @@ export async function buildContractPdf(d: ContractData): Promise<Uint8Array> {
       heading: "THE CLIENT",
       lines: [
         d.business.name,
-        ...partyLines([["Type", d.business.type], ["Represented by", d.business.manager], ["Email", d.business.email], ["Phone", d.business.phone], ["Location", d.business.location]]),
+        ...partyLines([["Type", d.business.type], ["RDB Reg. No.", d.business.registration], ["Represented by", d.business.manager], ["Email", d.business.email], ["Phone", d.business.phone], ["Location", d.business.location]]),
       ],
     },
   ];

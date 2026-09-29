@@ -8,8 +8,13 @@ import { fail } from "@/lib/server/result";
 import { revalidateRestaurant } from "@/lib/server/restaurants";
 import { ValidationError, validateString as str } from "@/lib/server/validate";
 import { agentsCol, businessesForAgent, statsFor, toAgent } from "@/lib/server/support";
-import { getContractTemplate, getPricingFresh, saveContractTemplate, savePricing } from "@/lib/server/settings";
-import type { ContractTemplate, PlanPricing, Pricing } from "@/lib/settings";
+import { getContact, getContractTemplate, getPricingFresh, saveContact, saveContractTemplate, savePricing } from "@/lib/server/settings";
+import { normalizeWhatsApp, type ContactInfo, type ContractTemplate, type PlanPricing, type Pricing } from "@/lib/settings";
+import { premiumDueDate, premiumPending } from "@/lib/premium";
+import { validateCertificateId } from "@/lib/server/certificates";
+import { normalizeSubdomain, subdomainHost, subdomainProblem } from "@/lib/domains";
+import { revalidateSubdomain, subdomainsCol } from "@/lib/server/subdomains";
+import { deleteUnusedImages, findUnusedImages } from "@/lib/server/image-cleanup";
 import { inTrial } from "@/lib/subscription";
 import type {
   AccountSummary,
@@ -23,7 +28,7 @@ import type {
 } from "@/lib/types";
 
 const PLANS: Plan[] = ["standard", "premium"];
-const TEMPLATES: PremiumTemplate[] = ["default", "camellia", "sample", "freshy"];
+const TEMPLATES: PremiumTemplate[] = ["default", "camellia", "sample", "freshy", "studio"];
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const companies = () => adminDb().collection("companies");
@@ -40,6 +45,7 @@ function toCompany(id: string, d: Record<string, unknown>): Company {
     location: s("location"),
     certificateNumber: s("certificateNumber"),
     certificateUrl: s("certificateUrl"),
+    hasCertificate: Boolean(s("certificateId") || s("certificateUrl")),
     businessType: s("businessType"),
     subscriptionStart: s("subscriptionStart"),
     subscriptionEnd: s("subscriptionEnd"),
@@ -54,6 +60,11 @@ function toCompany(id: string, d: Record<string, unknown>): Company {
     premiumTemplate: TEMPLATES.includes(d.premiumTemplate as PremiumTemplate)
       ? (d.premiumTemplate as PremiumTemplate)
       : "default",
+    premiumPending: premiumPending(d),
+    premiumDueAt: premiumPending(d) ? s("premiumDueAt") : "",
+    subdomain: s("subdomain"),
+    showOnHomepage: d.showOnHomepage !== false,
+    premiumOverdue: premiumPending(d) && !!s("premiumDueAt") && new Date(s("premiumDueAt")).getTime() < Date.now(),
     createdByAgentName: s("createdByAgentName"),
     setupFee: typeof d.setupFee === "number" ? d.setupFee : 0,
     agentEarning: typeof d.agentEarning === "number" ? d.agentEarning : typeof d.setupFee === "number" ? d.setupFee : 0,
@@ -120,7 +131,8 @@ export interface NewCompanyInput {
   email: string;
   location: string;
   certificateNumber: string;
-  certificateUrl: string;
+  /** Private certificate upload id from /api/upload (purpose "certificate"). */
+  certificateId: string;
   businessType: string;
   subscriptionStart: string;
   subscriptionEnd: string;
@@ -156,7 +168,8 @@ export async function createCompany(
       email,
       location: str(input.location, 500, "Location"),
       certificateNumber: str(input.certificateNumber, 120, "Certificate number"),
-      certificateUrl: str(input.certificateUrl, 1000, "Certificate"),
+      certificateId: validateCertificateId(input.certificateId),
+      certificateUrl: "",
       businessType: str(input.businessType, 80, "Business type") || "Restaurant",
       subscriptionStart: str(input.subscriptionStart, 40, "Subscription start"),
       subscriptionEnd: str(input.subscriptionEnd, 40, "Subscription end"),
@@ -249,7 +262,19 @@ export async function updatePremium(
       if (!TEMPLATES.includes(change.premiumTemplate)) throw new ValidationError("Invalid template");
       fields.premiumTemplate = change.premiumTemplate;
     }
-    const name = await updateCompany(id, fields, fields);
+
+    // Track the Premium page build: ordered when moved to Premium, delivered when switched on.
+    const current = (await companies().doc(id).get()).data() ?? {};
+    const tracking: Record<string, string> = {};
+    const next = { ...current, ...fields };
+    if (premiumPending(next) && !premiumPending(current)) {
+      tracking.premiumRequestedAt = now();
+      tracking.premiumDueAt = premiumDueDate(tracking.premiumRequestedAt);
+    }
+    if (fields.premiumEnabled === true && next.plan === "premium" && current.premiumEnabled !== true) {
+      tracking.premiumDeliveredAt = now();
+    }
+    const name = await updateCompany(id, { ...fields, ...tracking }, fields);
     await logActivity({
       type: "admin.premium_changed",
       message: `Changed ${name}: ${Object.entries(fields).map(([k, v]) => `${k} → ${v}`).join(", ")}`,
@@ -472,15 +497,16 @@ export async function setSupportAgentStatus(
 
 export interface AdminSettings {
   pricing: Pricing;
+  contact: ContactInfo;
   contract: Omit<ContractTemplate, "stampId" | "signatureId"> & { hasStamp: boolean; hasSignature: boolean };
 }
 
 export async function getSettings(idToken: string): Promise<ActionResult<AdminSettings>> {
   try {
     await requireAdmin(idToken);
-    const [pricing, contract] = await Promise.all([getPricingFresh(), getContractTemplate()]);
+    const [pricing, contract, contact] = await Promise.all([getPricingFresh(), getContractTemplate(), getContact()]);
     const { stampId, signatureId, ...rest } = contract;
-    return { ok: true, data: { pricing, contract: { ...rest, hasStamp: !!stampId, hasSignature: !!signatureId } } };
+    return { ok: true, data: { pricing, contact, contract: { ...rest, hasStamp: !!stampId, hasSignature: !!signatureId } } };
   } catch (err) {
     return fail(err, "Could not load settings");
   }
@@ -580,5 +606,188 @@ export async function updateContractTemplate(
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Could not save the contract template");
+  }
+}
+
+/* ---------- Premium subdomains ---------- */
+
+export interface SubdomainCheck {
+  name: string;
+  available: boolean;
+  /** Why it can't be used ("" when available). */
+  reason: string;
+}
+
+/** Live availability check while MasterAdmin types a subdomain. */
+export async function checkSubdomain(idToken: string, value: string, companyId: string): Promise<ActionResult<SubdomainCheck>> {
+  try {
+    await requireAdmin(idToken);
+    const name = normalizeSubdomain(String(value ?? ""));
+    const problem = subdomainProblem(name);
+    if (problem) return { ok: true, data: { name, available: false, reason: problem } };
+    const doc = await subdomainsCol().doc(name).get();
+    if (doc.exists && doc.get("companyId") !== companyId) {
+      return { ok: true, data: { name, available: false, reason: "Already used by another business" } };
+    }
+    return { ok: true, data: { name, available: true, reason: "" } };
+  } catch (err) {
+    return fail(err, "Could not check the subdomain");
+  }
+}
+
+/**
+ * Gives a Premium business its subdomain, or changes it. The old name keeps redirecting to the
+ * new one, and names are never released to another business.
+ */
+export async function setSubdomain(idToken: string, companyId: string, value: string): Promise<ActionResult<{ subdomain: string }>> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const name = normalizeSubdomain(String(value ?? ""));
+    const problem = subdomainProblem(name);
+    if (problem) throw new ValidationError(problem);
+
+    const db = adminDb();
+    const companyRef = companies().doc(String(companyId));
+    const result = await db.runTransaction(async (tx) => {
+      const company = await tx.get(companyRef);
+      if (!company.exists) throw new ValidationError("Company not found");
+      if (company.get("plan") !== "premium") throw new ValidationError("Subdomains are for Premium businesses — switch the plan to Premium first");
+      const ownerUid = company.get("ownerUid");
+      if (!ownerUid) throw new ValidationError("The owner hasn't created their login yet");
+      const restaurantRef = db.collection("restaurants").doc(ownerUid);
+      const [restaurant, target, former] = await Promise.all([
+        tx.get(restaurantRef),
+        tx.get(subdomainsCol().doc(name)),
+        tx.get(subdomainsCol().where("companyId", "==", company.id)),
+      ]);
+      if (!restaurant.exists) throw new ValidationError("This business has no restaurant page yet");
+      if (target.exists && target.get("companyId") !== company.id) throw new ValidationError("Already used by another business");
+
+      const old = typeof company.get("subdomain") === "string" ? (company.get("subdomain") as string) : "";
+      if (old === name) return { old, name, slug: restaurant.get("slug"), touched: [] as string[] };
+
+      const at = now();
+      tx.set(subdomainsCol().doc(name), { companyId: company.id, ownerUid, createdAt: target.get("createdAt") ?? at, updatedAt: at });
+      // Every former name of this business (and the one being replaced) now forwards to the new name.
+      const touched = former.docs.map((d) => d.id).filter((id) => id !== name);
+      for (const id of touched) tx.set(subdomainsCol().doc(id), { companyId: company.id, redirectTo: name, updatedAt: at });
+      if (old && !touched.includes(old)) {
+        tx.set(subdomainsCol().doc(old), { companyId: company.id, redirectTo: name, updatedAt: at });
+        touched.push(old);
+      }
+      tx.update(companyRef, { subdomain: name, subdomainSetAt: at, updatedAt: at });
+      tx.update(restaurantRef, { subdomain: name, updatedAt: at });
+      return { old, name, slug: restaurant.get("slug") as string, touched };
+    });
+
+    revalidateRestaurant(result.slug);
+    for (const n of [result.name, ...result.touched]) revalidateSubdomain(n);
+    if (result.old !== result.name) {
+      const companyName = (await companyRef.get()).get("companyName") ?? "";
+      await logActivity({
+        type: "admin.subdomain_changed",
+        message: result.old
+          ? `Changed ${companyName}'s address from ${subdomainHost(result.old)} to ${subdomainHost(result.name)} (old address redirects)`
+          : `Gave ${companyName} the address ${subdomainHost(result.name)}`,
+        actor: adminActor(admin),
+        target: { kind: "company", id: companyRef.id, name: companyName },
+        meta: { subdomain: result.name, previous: result.old },
+      });
+    }
+    return { ok: true, data: { subdomain: result.name } };
+  } catch (err) {
+    return fail(err, "Could not set the subdomain");
+  }
+}
+
+/* ---------- Storage cleanup ---------- */
+
+export interface StorageScan {
+  scanned: number;
+  unusedCount: number;
+  unusedBytes: number;
+  /** A few examples so MasterAdmin can see what would go. */
+  examples: { publicId: string; bytes: number; createdAt: string }[];
+}
+
+/** Lists stored images that nothing uses any more (older than 7 days). Changes nothing. */
+export async function scanStorage(idToken: string): Promise<ActionResult<StorageScan>> {
+  try {
+    await requireAdmin(idToken);
+    const report = await findUnusedImages();
+    return {
+      ok: true,
+      data: {
+        scanned: report.scanned,
+        unusedCount: report.unused.length,
+        unusedBytes: report.unusedBytes,
+        examples: report.unused.slice(0, 8).map((f) => ({ publicId: f.publicId, bytes: f.bytes, createdAt: f.createdAt })),
+      },
+    };
+  } catch (err) {
+    return fail(err, "Could not scan storage");
+  }
+}
+
+/** Deletes the unused images (re-checked on the server at the moment of deletion). */
+export async function cleanStorage(idToken: string): Promise<ActionResult<{ deleted: number; bytes: number }>> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const result = await deleteUnusedImages();
+    await logActivity({
+      type: "admin.settings_changed",
+      message: `Storage cleanup: deleted ${result.deleted} unused image${result.deleted === 1 ? "" : "s"} (${(result.bytes / 1048576).toFixed(1)} MB)`,
+      actor: adminActor(admin),
+      meta: { deleted: result.deleted, bytes: result.bytes },
+    });
+    return { ok: true, data: result };
+  } catch (err) {
+    return fail(err, "Storage cleanup failed");
+  }
+}
+
+/** Shows or hides a business's logo in the homepage customer row. */
+export async function setShowOnHomepage(idToken: string, id: string, show: boolean): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const name = await updateCompany(id, { showOnHomepage: show === true });
+    await logActivity({
+      type: "admin.status_changed",
+      message: `${show ? "Showing" : "Hid"} ${name} ${show ? "in" : "from"} the homepage customer row`,
+      actor: adminActor(admin),
+      target: { kind: "company", id, name },
+      meta: { showOnHomepage: show === true },
+    });
+    return { ok: true, data: undefined };
+  } catch (err) {
+    return fail(err, "Could not update the homepage setting");
+  }
+}
+
+/** Phone, WhatsApp and email shown across ScanDish (homepage, legal pages, dashboards, contracts). */
+export async function updateContact(idToken: string, input: { phone: string; whatsapp: string; email: string }): Promise<ActionResult<ContactInfo>> {
+  try {
+    const admin = await requireAdmin(idToken);
+    const phone = str(input.phone, 30, "Phone").replace(/\s+/g, " ");
+    if (!/^\+?[\d\s()-]{7,20}$/.test(phone) || phone.replace(/\D/g, "").length < 7) {
+      throw new ValidationError("Enter a valid phone number, e.g. +250 781 822 350");
+    }
+    const whatsapp = normalizeWhatsApp(str(input.whatsapp, 30, "WhatsApp"));
+    if (!/^\d{8,15}$/.test(whatsapp)) throw new ValidationError("Enter a valid WhatsApp number with country code, e.g. 250781822350");
+    const email = str(input.email, 120, "Email").toLowerCase();
+    if (!EMAIL.test(email)) throw new ValidationError("Enter a valid email address");
+
+    const before = await getContact();
+    const saved = await saveContact({ phone, whatsapp, email });
+    const changed = (["phone", "whatsapp", "email"] as const).filter((k) => before[k] !== saved[k]);
+    await logActivity({
+      type: "admin.settings_changed",
+      message: changed.length ? `Updated ScanDish contact details: ${changed.join(", ")}` : "Saved ScanDish contact details (no changes)",
+      actor: adminActor(admin),
+      meta: { phone, whatsapp, email },
+    });
+    return { ok: true, data: saved };
+  } catch (err) {
+    return fail(err, "Could not save the contact details");
   }
 }

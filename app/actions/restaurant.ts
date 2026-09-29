@@ -28,13 +28,15 @@ export async function saveDashboard(idToken: string, input: unknown): Promise<Ac
       throw new ValidationError("Set your own password before publishing changes.");
     }
     const content = parseRestaurantContent(input);
-    const { slug, name, changes } = await saveRestaurantContent(user.uid, content);
+    const { slug, name, changes, imagesDeleted } = await saveRestaurantContent(user.uid, content);
     await logActivity({
       type: "restaurant.saved",
-      message: changes.length ? `${name} published changes: ${changes.join(", ")}` : `${name} published (no changes)`,
+      message:
+        (changes.length ? `${name} published changes: ${changes.join(", ")}` : `${name} published (no changes)`) +
+        (imagesDeleted ? ` — ${imagesDeleted} replaced image${imagesDeleted > 1 ? "s" : ""} deleted from storage` : ""),
       actor: { uid: user.uid, email: user.email },
       target: { kind: "restaurant", id: user.uid, name },
-      meta: { slug, sections: changes.length },
+      meta: { slug, sections: changes.length, imagesDeleted },
     });
     return { ok: true, data: undefined };
   } catch (err) {

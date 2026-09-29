@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { BRAND, LEGAL_UPDATED } from "@/lib/brand";
+import { getContact } from "@/lib/server/settings";
 
 export interface LegalSection {
   id: string;
@@ -9,7 +10,7 @@ export interface LegalSection {
 }
 
 /** Shared layout for the Terms of Service and Privacy Policy. */
-export default function LegalPage({
+export default async function LegalPage({
   title,
   intro,
   sections,
@@ -18,6 +19,7 @@ export default function LegalPage({
   intro: React.ReactNode;
   sections: LegalSection[];
 }) {
+  const contact = await getContact();
   return (
     <main className="min-h-screen bg-[#fff8f5] text-gray-800">
       <header className="border-b border-[#f3d8cf] bg-white">
@@ -82,7 +84,7 @@ export default function LegalPage({
           .
         </p>
         <p className="mt-1">
-          Questions? <a href={`mailto:${BRAND.supportEmail}`} className="font-semibold text-[#f08c6c]">{BRAND.supportEmail}</a>
+          Questions? <a href={`mailto:${contact.email}`} className="font-semibold text-[#f08c6c]">{contact.email}</a>
         </p>
         <p className="mt-3 space-x-4">
           <Link href="/terms" className="hover:text-[#f08c6c]">Terms of Service</Link>

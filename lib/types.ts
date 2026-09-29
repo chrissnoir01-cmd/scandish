@@ -31,7 +31,7 @@ export interface Social {
 }
 
 export type Plan = "standard" | "premium";
-export type PremiumTemplate = "default" | "camellia" | "sample" | "freshy";
+export type PremiumTemplate = "default" | "camellia" | "sample" | "freshy" | "studio";
 export type CompanyStatus = "active" | "inactive";
 
 /** Fields a restaurant owner is allowed to edit from the dashboard. */
@@ -58,6 +58,12 @@ export interface PublicRestaurant extends RestaurantContent {
   plan: Plan;
   premiumEnabled: boolean;
   premiumTemplate: PremiumTemplate;
+  /** Published Design Studio design, when premiumTemplate is "studio". */
+  design: import("./design").DesignConfig | null;
+  /** Premium subdomain ("kiza" → kiza.scandish.online); "" when the page lives at /r/<slug>. */
+  subdomain: string;
+  /** Premium table ordering is switched on: guests can send orders from the menu. */
+  ordering: boolean;
 }
 
 export interface Subscription {
@@ -75,6 +81,13 @@ export interface DashboardData extends RestaurantContent {
   subscription: Subscription | null;
   /** Account was created by a support member with a temporary password. */
   mustChangePassword: boolean;
+  /** Premium subdomain, "" if none — the public address and QR code use it. */
+  subdomain: string;
+  /** Premium plan whose custom page ScanDish is still building, and its latest delivery date ("" if not recorded). */
+  premiumPending: boolean;
+  premiumDueAt: string;
+  /** The restaurant is accepting table orders (Premium only). */
+  ordersOpen: boolean;
 }
 
 export interface Company {
@@ -84,8 +97,11 @@ export interface Company {
   phone: string;
   email: string;
   location: string;
+  /** Business registration (RDB) number. */
   certificateNumber: string;
   certificateUrl: string;
+  /** A certificate document is on file (private upload or older direct link). */
+  hasCertificate: boolean;
   businessType: string;
   subscriptionStart: string;
   subscriptionEnd: string;
@@ -98,6 +114,14 @@ export interface Company {
   plan: Plan;
   premiumEnabled: boolean;
   premiumTemplate: PremiumTemplate;
+  /** Premium plan whose custom page isn't switched on yet, and its latest delivery date ("" if not recorded). */
+  premiumPending: boolean;
+  premiumDueAt: string;
+  premiumOverdue: boolean;
+  /** Premium subdomain ("" = none). */
+  subdomain: string;
+  /** Logo appears in the homepage customer row (default true). */
+  showOnHomepage: boolean;
   /** Support member who onboarded this business ("" = created by MasterAdmin). */
   createdByAgentName: string;
   setupFee: number;
@@ -152,6 +176,11 @@ export interface AgentBusiness {
   plan: Plan;
   slug: string;
   state: OnboardingState;
+  registrationNumber: string;
+  hasCertificate: boolean;
+  /** Premium page still being built by ScanDish, and its due date ("" if none recorded). */
+  premiumPending: boolean;
+  premiumDueAt: string;
   managerHasLoggedIn: boolean;
   passwordChanged: boolean;
   /** Setup fee charged to the business and the member's share of it, fixed when the business was created. */
@@ -191,8 +220,12 @@ export type ActivityType =
   | "support.business_created"
   | "support.password_reissued"
   | "restaurant.password_set"
+  | "restaurant.orders_toggled"
   | "contract.generated"
+  | "document.viewed"
   | "admin.settings_changed"
+  | "admin.design_changed"
+  | "admin.subdomain_changed"
   | "security.unauthorized";
 
 export interface ActivityEvent {

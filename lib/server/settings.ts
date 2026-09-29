@@ -1,7 +1,15 @@
 import "server-only";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { adminDb } from "./firebase-admin";
-import { DEFAULT_CONTRACT, DEFAULT_PRICING, type ContractTemplate, type PlanPricing, type Pricing } from "../settings";
+import {
+  DEFAULT_CONTACT,
+  DEFAULT_CONTRACT,
+  DEFAULT_PRICING,
+  type ContactInfo,
+  type ContractTemplate,
+  type PlanPricing,
+  type Pricing,
+} from "../settings";
 
 const SETTINGS_TAG = "settings";
 const doc = (id: "pricing" | "contract") => adminDb().collection("settings").doc(id);
@@ -55,5 +63,51 @@ export async function saveContractTemplate(t: Partial<ContractTemplate>): Promis
   const current = await getContractTemplate();
   const saved: ContractTemplate = { ...current, ...t, updatedAt: new Date().toISOString() };
   await doc("contract").set(saved);
+  // The About page and llms.txt show the signatory as the company's leader.
+  revalidateTag(SETTINGS_TAG, { expire: 0 });
   return saved;
+}
+
+/* ---------- Contact details ---------- */
+
+async function readContact(): Promise<ContactInfo> {
+  const d = (await adminDb().collection("settings").doc("contact").get()).data() as Partial<ContactInfo> | undefined;
+  return { ...DEFAULT_CONTACT, ...(d ?? {}) };
+}
+
+const cachedContact = unstable_cache(readContact, ["contact"], { tags: [SETTINGS_TAG], revalidate: 3600 });
+
+/** How to reach ScanDish (phone, WhatsApp, email). Falls back to defaults if the database is unreachable. */
+export async function getContact(): Promise<ContactInfo> {
+  try {
+    return await cachedContact();
+  } catch {
+    return DEFAULT_CONTACT;
+  }
+}
+
+export async function saveContact(c: Omit<ContactInfo, "updatedAt">): Promise<ContactInfo> {
+  const saved: ContactInfo = { ...c, updatedAt: new Date().toISOString() };
+  await adminDb().collection("settings").doc("contact").set(saved);
+  // Every page shows these details (footer, legal pages, contact buttons), so refresh them all.
+  revalidateTag(SETTINGS_TAG, { expire: 0 });
+  return saved;
+}
+
+/** Who leads the company, as named on the service contract (MasterAdmin → Settings). Cached. */
+const cachedLeader = unstable_cache(
+  async () => {
+    const t = await getContractTemplate();
+    return { name: t.signatoryName, title: t.signatoryTitle };
+  },
+  ["leader"],
+  { tags: [SETTINGS_TAG], revalidate: 3600 }
+);
+
+export async function getCompanyLeader(): Promise<{ name: string; title: string }> {
+  try {
+    return await cachedLeader();
+  } catch {
+    return { name: DEFAULT_CONTRACT.signatoryName, title: DEFAULT_CONTRACT.signatoryTitle };
+  }
 }

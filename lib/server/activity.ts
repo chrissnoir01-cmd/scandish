@@ -26,8 +26,12 @@ const CATEGORY: Record<ActivityType, ActivityCategory> = {
   "support.business_created": "support",
   "support.password_reissued": "support",
   "restaurant.password_set": "restaurant",
+  "restaurant.orders_toggled": "restaurant",
   "contract.generated": "support",
+  "document.viewed": "security",
   "admin.settings_changed": "admin",
+  "admin.design_changed": "admin",
+  "admin.subdomain_changed": "admin",
   "security.unauthorized": "security",
 };
 

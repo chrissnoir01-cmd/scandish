@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import LegalPage, { type LegalSection } from "@/components/legal/LegalPage";
 import { BRAND } from "@/lib/brand";
+import type { ContactInfo } from "@/lib/settings";
+import { getContact } from "@/lib/server/settings";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -9,9 +11,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
 };
 
-const email = <a href={`mailto:${BRAND.supportEmail}`}>{BRAND.supportEmail}</a>;
-
-const sections: LegalSection[] = [
+/** Built per render so the contact details are always the current ones (MasterAdmin → Settings). */
+const buildSections = (contact: ContactInfo): LegalSection[] => {
+  const email = <a href={`mailto:${contact.email}`}>{contact.email}</a>;
+  return [
   {
     id: "controller",
     title: "Who is responsible",
@@ -60,6 +63,12 @@ const sections: LegalSection[] = [
           we do not use advertising cookies. An IP address is used briefly to stop the same device inflating counts and is
           then discarded. Maps on menu pages are provided by Google Maps, which may set its own cookies under Google&apos;s
           privacy policy.
+        </p>
+        <p>
+          <strong>Table orders.</strong> On menus where the restaurant accepts orders, a guest who sends an order gives
+          the dishes chosen, a table number and/or a phone number, and an optional note. These go only to that restaurant
+          so it can prepare and deliver the order (and call the guest if needed). Orders, including the phone number, are
+          deleted automatically after 30 days. Payment is made at the restaurant; ScanDish does not handle it.
         </p>
       </>
     ),
@@ -180,7 +189,7 @@ const sections: LegalSection[] = [
     title: "Contact",
     body: (
       <p>
-        {BRAND.company} — ScanDish · Kigali, Rwanda · {email} · {BRAND.supportPhone} ·{" "}
+        {BRAND.company} — ScanDish · Kigali, Rwanda · {email} · {contact.phone} ·{" "}
         <a href={BRAND.companyUrl} target="_blank" rel="noreferrer">
           ironiclab.site
         </a>
@@ -188,8 +197,10 @@ const sections: LegalSection[] = [
     ),
   },
 ];
+};
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const contact = await getContact();
   return (
     <LegalPage
       title="Privacy Policy"
@@ -200,7 +211,7 @@ export default function PrivacyPage() {
           menu; menu visitors stay anonymous; we never sell data.
         </p>
       }
-      sections={sections}
+      sections={buildSections(contact)}
     />
   );
 }

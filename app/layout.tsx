@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ContactProvider } from "@/components/ContactProvider";
+import { getContact } from "@/lib/server/settings";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://scandish.online"),
@@ -53,11 +55,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const contact = await getContact();
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -72,8 +75,8 @@ export default function RootLayout({
       name: "Ironic Lab Inc.",
       url: "https://ironiclab.site",
     },
-    email: "support@scandish.online",
-    telephone: "+250781822350",
+    email: contact.email,
+    telephone: contact.phone,
     foundingLocation: {
       "@type": "Place",
       address: {
@@ -85,9 +88,9 @@ export default function RootLayout({
     contactPoint: [
       {
         "@type": "ContactPoint",
-        telephone: "+250781822350",
+        telephone: contact.phone,
         contactType: "customer support",
-        email: "support@scandish.online",
+        email: contact.email,
         areaServed: "RW",
         availableLanguage: ["English", "French", "Kinyarwanda"],
       },
@@ -129,7 +132,7 @@ export default function RootLayout({
           }}
         />
 
-        {children}
+        <ContactProvider value={contact}>{children}</ContactProvider>
       </body>
     </html>
   );
