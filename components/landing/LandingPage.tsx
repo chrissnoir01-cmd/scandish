@@ -110,6 +110,11 @@ export default function LandingPage({
               {PREMIUM_BUILD_DAYS.min}–{PREMIUM_BUILD_DAYS.max} working days. It lives at its own address, easy to say out loud and
               easy to find on Google.
             </p>
+            <p className="mt-4 max-w-md leading-relaxed text-[var(--ink-2)]">
+              Premium pages can also <strong className="font-semibold text-[var(--ink)]">take orders from the table</strong>: guests pick
+              their dishes and send them with their table number, and the order prints straight away on your receipt printer. Switch it off
+              whenever the kitchen is busy.
+            </p>
           </div>
           <div className="rounded-2xl border border-[var(--line)] bg-white p-3 shadow-[0_30px_60px_-40px_rgba(29,23,18,0.5)]">
             <div className="flex items-center gap-2 rounded-lg bg-[var(--paper-2)] px-3 py-2 text-sm">
@@ -152,6 +157,7 @@ export default function LandingPage({
                 items={[
                   `Unique design, ready in ${PREMIUM_BUILD_DAYS.min}–${PREMIUM_BUILD_DAYS.max} working days`,
                   "Your own address: yourname.scandish.online",
+                  "Table ordering, printed on your receipt printer",
                   "Priority support",
                   "Everything in Standard",
                 ]}
