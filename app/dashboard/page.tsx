@@ -668,7 +668,8 @@ export default function DashboardPage() {
     if (!user || verifying) return;
     setVerifying(true);
     try {
-      await sendEmailVerification(user);
+      // After confirming on Firebase's page, "Continue" brings the owner back to the dashboard.
+      await sendEmailVerification(user, { url: `${window.location.origin}/dashboard` });
       triggerToast("Verification link sent to your email");
     } catch {
       triggerToast("Could not send the email. Try again in a few minutes.", "error");
