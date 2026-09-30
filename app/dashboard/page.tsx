@@ -14,6 +14,7 @@ import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
 import OrdersPanel from "@/components/dashboard/OrdersPanel";
 import InstallApp from "@/components/dashboard/InstallApp";
+import EmailSettings from "@/components/dashboard/EmailSettings";
 import SecurityCenter from "@/components/dashboard/SecurityCenter";
 import { LockPill, LockedBanner, useSecureDashboard } from "@/components/dashboard/SecureDashboard";
 import { useContact } from "@/components/ContactProvider";
@@ -25,7 +26,6 @@ import {
   updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
-  sendEmailVerification,
 } from "firebase/auth";
 import { FaWhatsapp, FaInstagram, FaFacebook, FaTiktok } from "react-icons/fa";
 import {
@@ -51,12 +51,10 @@ import {
   Image as ImageIcon,
   UploadCloud,
   LogOut,
-  Mail,
   Smartphone,
   Search,
   MapPin,
   Clock,
-  CircleCheck,
   Globe,
   Sparkles,
   Eye,
@@ -268,7 +266,6 @@ export default function DashboardPage() {
   const [curPass, setCurPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
-  const [verifying, setVerifying] = useState(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [plan, setPlan] = useState("standard");
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -297,17 +294,35 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
-  const refreshAnalytics = async () => {
-    setAnalyticsLoading(true);
+  const refreshAnalytics = async (silent = false) => {
+    if (!silent) setAnalyticsLoading(true);
     try {
       const res = await loadAnalytics(await getIdToken());
       if (res.ok) setAnalytics(res.data);
     } catch {
       // Views are a nice-to-have; the dashboard keeps working without them.
     } finally {
-      setAnalyticsLoading(false);
+      if (!silent) setAnalyticsLoading(false);
     }
   };
+
+  // Views update by themselves every minute while the dashboard is open and on screen.
+  const refreshRef = useRef(refreshAnalytics);
+  useEffect(() => {
+    refreshRef.current = refreshAnalytics;
+  });
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    const tick = () => {
+      if (document.visibilityState === "visible") void refreshRef.current(true);
+    };
+    const timer = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [loadState]);
 
   // --- HELPERS ---
 
@@ -664,20 +679,6 @@ export default function DashboardPage() {
     }
   };
 
-  const verifyEmail = async () => {
-    if (!user || verifying) return;
-    setVerifying(true);
-    try {
-      // After confirming on Firebase's page, "Continue" brings the owner back to the dashboard.
-      await sendEmailVerification(user, { url: `${window.location.origin}/dashboard` });
-      triggerToast("Verification link sent to your email");
-    } catch {
-      triggerToast("Could not send the email. Try again in a few minutes.", "error");
-    } finally {
-      setTimeout(() => setVerifying(false), 5000);
-    }
-  };
-
   // --- SAVE & PUBLISH ---
 
   const handleSave = async (retried = false): Promise<void> => {
@@ -992,7 +993,7 @@ export default function DashboardPage() {
           )}
 
           {activeTab === "insights" && (
-            <InsightsPanel analytics={analytics} loading={analyticsLoading} onRefresh={refreshAnalytics} />
+            <InsightsPanel analytics={analytics} loading={analyticsLoading} onRefresh={() => void refreshAnalytics()} />
           )}
 
           {activeTab === "general" && (
@@ -1401,30 +1402,7 @@ export default function DashboardPage() {
             <div className="space-y-6">
               <SectionCard title="Security & Account" icon={ShieldCheck}>
                 <div className="space-y-6">
-                  <div className="rounded-3xl border border-gray-100 bg-gray-50 p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Mail className="text-[#f08c6c]" size={20} />
-                        <div>
-                          <p className="text-xs font-black uppercase text-gray-400 tracking-widest">Login Email</p>
-                          <p className="font-bold">{user?.email}</p>
-                        </div>
-                      </div>
-                      {user?.emailVerified ? (
-                        <div className="flex items-center gap-1 text-[10px] font-black uppercase text-green-500 bg-green-50 px-3 py-1 rounded-full">
-                          <CircleCheck size={12} /> Verified
-                        </div>
-                      ) : (
-                        <button
-                          onClick={verifyEmail}
-                          disabled={verifying}
-                          className="text-[10px] font-black uppercase text-white bg-[#f08c6c] px-3 py-1 rounded-full active:scale-95 disabled:opacity-50"
-                        >
-                          {verifying ? "Sending..." : "Verify"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  {user && <EmailSettings user={user} notify={triggerToast} />}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-2xl bg-gray-50 p-4">

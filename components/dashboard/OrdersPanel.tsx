@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Bluetooth,
   Check,
@@ -17,11 +17,14 @@ import {
   Usb,
   Volume2,
   X,
+  CookingPot,
+  Ban,
 } from "lucide-react";
 import { auth, getIdToken } from "@/lib/firebase";
 import { claimPrint, loadOrders, releasePrint, updateOrderStatus, updateOrdersOpen } from "@/app/actions/orders";
 import { ORDER_LIMITS, STATUS_LABEL, formatAmount, toOrder, type Order, type OrderStatus } from "@/lib/orders";
-import { orderTime, type PaperWidth } from "@/lib/printing/receipt";
+import { orderTime, type PaperWidth, type TicketKind } from "@/lib/printing/receipt";
+import { JOB_LABEL, PrintQueue, isActive, type PrintJob } from "@/lib/printing/queue";
 import {
   connectPrinter,
   printerError,
@@ -42,16 +45,23 @@ interface PrinterSettings {
   saved: SavedPrinter | null;
   width: PaperWidth;
   auto: boolean;
+  /** What prints automatically for each new order. */
+  tickets: "receipt" | "kitchen" | "both";
 }
+
+const ticketsFor = (t: PrinterSettings["tickets"]): TicketKind[] => (t === "both" ? ["kitchen", "receipt"] : [t]);
 
 function readSettings(): PrinterSettings {
   try {
     const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "null");
-    if (v && typeof v === "object") return { saved: v.saved ?? null, width: v.width === 58 ? 58 : 80, auto: v.auto !== false };
+    if (v && typeof v === "object") {
+      const tickets = v.tickets === "kitchen" || v.tickets === "both" ? v.tickets : "receipt";
+      return { saved: v.saved ?? null, width: v.width === 58 ? 58 : 80, auto: v.auto !== false, tickets };
+    }
   } catch {
     // Nothing saved.
   }
-  return { saved: null, width: 80, auto: true };
+  return { saved: null, width: 80, auto: true, tickets: "receipt" };
 }
 
 function writeSettings(s: PrinterSettings) {
@@ -107,6 +117,12 @@ function chime() {
   });
 }
 
+const msFromNow = (ms: number) => Date.now() + ms;
+
+/** YYYY-MM-DD in Kigali, matching the day stored on each order. */
+const kigaliDay = (ms: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kigali", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+
 function ago(iso: string, now: number): string {
   const min = Math.floor((now - new Date(iso).getTime()) / 60_000);
   if (min < 1) return "just now";
@@ -142,10 +158,12 @@ export default function OrdersPanel({
   const [filter, setFilter] = useState<Filter>("active");
   const [now, setNow] = useState(() => Date.now());
 
-  const [settings, setSettings] = useState<PrinterSettings>({ saved: null, width: 80, auto: true });
+  const [settings, setSettings] = useState<PrinterSettings>({ saved: null, width: 80, auto: true, tickets: "receipt" });
   const [printer, setPrinter] = useState<PrinterConnection | null>(null);
   const [connecting, setConnecting] = useState<PrinterKind | "reconnect" | null>(null);
-  const [printing, setPrinting] = useState<string | null>(null);
+  // Print jobs run in the background; the dashboard stays usable while they print.
+  const [queue] = useState(() => new PrintQueue());
+  const jobs = useSyncExternalStore(queue.subscribe, queue.snapshot, queue.snapshot);
   const [support, setSupport] = useState<Record<PrinterKind, boolean>>({ bluetooth: false, usb: false, serial: false, system: true });
   const [showHelp, setShowHelp] = useState(false);
 
@@ -159,7 +177,10 @@ export default function OrdersPanel({
   const notify = useCallback((msg: string, type?: "success" | "error") => notifyRef.current(msg, type), []);
 
   const known = useRef<Set<string> | null>(null);
-  const claiming = useRef(new Set<string>());
+  /** Orders this device already tried to print automatically — never retried in a loop. */
+  const autoTried = useRef(new Set<string>());
+  /** Status changes made here, shown until the server confirms them (an older update can't undo them). */
+  const pendingStatus = useRef(new Map<string, { status: OrderStatus; until: number }>());
   const station = useRef("station");
 
   /* ----- Printer settings and reconnect ----- */
@@ -200,7 +221,17 @@ export default function OrdersPanel({
 
   /* ----- Orders: first load, then live updates (polling if live is unavailable) ----- */
 
-  const receive = useCallback((list: Order[]) => {
+  const receive = useCallback((incoming: Order[]) => {
+    const now = Date.now();
+    const list = incoming.map((o) => {
+      const pending = pendingStatus.current.get(o.id);
+      if (!pending) return o;
+      if (pending.status === o.status || pending.until < now) {
+        pendingStatus.current.delete(o.id);
+        return o;
+      }
+      return { ...o, status: pending.status };
+    });
     if (known.current) {
       const fresh = list.filter((o) => !known.current!.has(o.id) && o.status === "new");
       if (fresh.length) {
@@ -222,10 +253,14 @@ export default function OrdersPanel({
       const res = await loadOrders(await getIdToken(), prune);
       if (!cancelled && res.ok) receive(res.data);
     };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchOnce().catch(() => {});
+    };
     const startPolling = () => {
       if (poll || cancelled) return;
       setLive("polling");
-      poll = setInterval(() => void fetchOnce().catch(() => {}), 15_000);
+      poll = setInterval(() => void fetchOnce().catch(() => {}), 10_000);
+      document.addEventListener("visibilitychange", onVisible);
     };
 
     (async () => {
@@ -259,6 +294,7 @@ export default function OrdersPanel({
       cancelled = true;
       unsubscribe?.();
       if (poll) clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [receive]);
 
@@ -285,51 +321,64 @@ export default function OrdersPanel({
 
   /* ----- Printing ----- */
 
-  const printOrder = useCallback(
-    async (order: Order, reprint: boolean, via: PrinterConnection | null) => {
-      const target = via ?? (await connectPrinter("system")).connection;
-      await target.print(order, restaurantName, settings.width, reprint);
+  /** Queues one order's tickets on a printer (the computer's own printer when none is connected). */
+  const queuePrint = useCallback(
+    (
+      order: Order,
+      tickets: TicketKind[],
+      opts: { auto: boolean; reprint: boolean; via: PrinterConnection | null; label?: string; key?: string }
+    ): boolean => {
+      let claimed = false;
+      return queue.add({
+        key: opts.key ?? `${order.id}:${opts.auto ? "auto" : tickets.join("+")}`,
+        orderId: order.id,
+        label: opts.label ?? `Order #${order.number} · ${tickets.map((t) => (t === "kitchen" ? "kitchen ticket" : "receipt")).join(" + ")}`,
+        auto: opts.auto,
+        // Automatic prints: only the first device to claim a new order prints it.
+        before: opts.auto
+          ? async () => {
+              const res = await claimPrint(await getIdToken(), order.id, station.current);
+              claimed = res.ok && res.data;
+              return claimed;
+            }
+          : undefined,
+        run: async (signal) => {
+          const target = opts.via ?? (await connectPrinter("system")).connection;
+          for (const ticket of tickets) {
+            await target.print({ order, restaurant: restaurantName, width: settings.width, reprint: opts.reprint, ticket }, signal);
+          }
+        },
+        after: async (status) => {
+          if (order.id === "test") return;
+          const token = await getIdToken().catch(() => "");
+          if (!token) return;
+          if (opts.auto && claimed && status !== "completed") {
+            // Not printed after all: show "Not printed" so staff can press Print.
+            await releasePrint(token, order.id);
+            if (status === "failed") notify(`Order #${order.number} didn't print — check the printer, then press Receipt.`, "error");
+          }
+          if (!opts.auto && status === "completed" && tickets.includes("receipt")) await claimPrint(token, order.id, station.current, true);
+        },
+      });
     },
-    [restaurantName, settings.width]
+    [queue, restaurantName, settings.width, notify]
   );
 
-  // Auto-print: every new, unprinted order is claimed by one station and printed there.
+  // Auto-print: every new, unprinted order gets one automatic attempt on this device.
   useEffect(() => {
     if (!printer || !settings.auto || !loaded) return;
     const due = orders
-      .filter((o) => o.status === "new" && !o.printedAt && !claiming.current.has(o.id) && Date.now() - new Date(o.createdAt).getTime() < AUTO_PRINT_WINDOW_MS)
+      .filter((o) => o.status === "new" && !o.printedAt && !autoTried.current.has(o.id) && Date.now() - new Date(o.createdAt).getTime() < AUTO_PRINT_WINDOW_MS)
       .reverse(); // oldest first
-    if (!due.length) return;
-    due.forEach((o) => claiming.current.add(o.id));
-    (async () => {
-      for (const order of due) {
-        try {
-          const token = await getIdToken();
-          const claim = await claimPrint(token, order.id, station.current);
-          if (!claim.ok || !claim.data) continue; // another station has it
-          try {
-            await printOrder(order, false, printer);
-          } catch {
-            await releasePrint(token, order.id);
-            notify(`Order #${order.number} didn't print — check the printer is on, then press Print.`, "error");
-          }
-        } finally {
-          claiming.current.delete(order.id);
-        }
-      }
-    })();
-  }, [orders, printer, settings.auto, loaded, printOrder, notify]);
-
-  const manualPrint = async (order: Order) => {
-    setPrinting(order.id);
-    try {
-      await printOrder(order, Boolean(order.printedAt), printer);
-      await claimPrint(await getIdToken(), order.id, station.current, true);
-    } catch (err) {
-      notify(printerError(err) ?? "The receipt didn't print", "error");
-    } finally {
-      setPrinting(null);
+    for (const order of due) {
+      autoTried.current.add(order.id);
+      queuePrint(order, ticketsFor(settings.tickets), { auto: true, reprint: false, via: printer });
     }
+  }, [orders, printer, settings.auto, settings.tickets, loaded, queuePrint]);
+
+  const manualPrint = (order: Order, ticket: TicketKind) => {
+    const ok = queuePrint(order, [ticket], { auto: false, reprint: ticket === "receipt" && Boolean(order.printedAt), via: printer });
+    if (!ok) notify(`Order #${order.number} is already printing`);
   };
 
   const connect = async (kind: PrinterKind) => {
@@ -371,7 +420,7 @@ export default function OrdersPanel({
     saveSettings({ ...settings, saved: null });
   };
 
-  const testPrint = async () => {
+  const testPrint = () => {
     const sample: Order = {
       id: "test",
       number: 0,
@@ -390,13 +439,8 @@ export default function OrdersPanel({
       createdAt: new Date().toISOString(),
       printedAt: "",
     };
-    setPrinting("test");
-    try {
-      await printOrder(sample, false, printer);
-    } catch (err) {
-      notify(printerError(err) ?? "The test receipt didn't print", "error");
-    } finally {
-      setPrinting(null);
+    if (!queuePrint(sample, ticketsFor(settings.tickets), { auto: false, reprint: false, via: printer, label: "Test print", key: "test" })) {
+      notify("The test is already printing");
     }
   };
 
@@ -418,12 +462,27 @@ export default function OrdersPanel({
   };
 
   const setStatus = async (order: Order, status: OrderStatus) => {
+    pendingStatus.current.set(order.id, { status, until: msFromNow(30_000) });
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status } : o)));
-    const res = await updateOrderStatus(await getIdToken(), order.id, status);
-    if (!res.ok) {
+    try {
+      const res = await updateOrderStatus(await getIdToken(), order.id, status);
+      if (!res.ok) throw new Error(res.error);
+    } catch (err) {
+      pendingStatus.current.delete(order.id);
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: order.status } : o)));
-      notify(res.error, "error");
+      notify(err instanceof Error ? err.message : "Could not update the order", "error");
     }
+  };
+
+  // Today at a glance — recalculated from the live list, so it changes the moment an order does.
+  const todays = orders.filter((o) => o.day === kigaliDay(now));
+  const today = {
+    count: todays.filter((o) => o.status !== "cancelled").length,
+    open: todays.filter((o) => o.status === "new" || o.status === "preparing").length,
+    done: todays.filter((o) => o.status === "done").length,
+    cancelled: todays.filter((o) => o.status === "cancelled").length,
+    revenue: todays.filter((o) => o.status === "done").reduce((n, o) => n + o.total, 0),
+    currency: todays[0]?.currency ?? "RWF",
   };
 
   const shown = orders.filter((o) =>
@@ -437,10 +496,12 @@ export default function OrdersPanel({
     { kind: "system", label: "Printer installed on this computer", hint: "Wi-Fi, network or any printer with a driver", Icon: Monitor },
   ];
 
-  if (!visible) return null;
+  const tray = <PrintTray jobs={jobs} onCancel={(id) => queue.cancel(id)} onDismiss={(id) => queue.dismiss(id)} />;
+  if (!visible) return tray;
 
   return (
     <div className="space-y-6">
+      {tray}
       {/* Accepting orders */}
       <section className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
@@ -498,8 +559,8 @@ export default function OrdersPanel({
 
         {printer ? (
           <div className="mt-5 flex flex-wrap gap-3">
-            <button type="button" onClick={testPrint} disabled={printing === "test"} className="flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">
-              {printing === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Print test receipt
+            <button type="button" onClick={testPrint} className="flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white">
+              <Printer className="h-4 w-4" /> Print test
             </button>
             <button type="button" onClick={disconnect} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50">
               <Unplug className="h-4 w-4" /> Disconnect
@@ -550,6 +611,18 @@ export default function OrdersPanel({
             >
               <option value={80}>80 mm</option>
               <option value={58}>58 mm</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 font-semibold text-gray-700">
+            For each new order print
+            <select
+              value={settings.tickets}
+              onChange={(e) => saveSettings({ ...settings, tickets: e.target.value as PrinterSettings["tickets"] })}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 font-bold"
+            >
+              <option value="receipt">Receipt</option>
+              <option value="kitchen">Kitchen ticket</option>
+              <option value="both">Kitchen ticket + receipt</option>
             </select>
           </label>
           <label className="flex cursor-pointer items-center gap-2 font-semibold text-gray-700">
@@ -613,6 +686,23 @@ export default function OrdersPanel({
           </span>
         </div>
 
+        <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {(
+            [
+              ["Orders today", String(today.count)],
+              ["In progress", String(today.open)],
+              ["Done", String(today.done)],
+              ["Cancelled", String(today.cancelled)],
+              ["Revenue (done)", `${formatAmount(today.revenue)} ${today.currency}`],
+            ] as [string, string][]
+          ).map(([label, value]) => (
+            <div key={label} className="rounded-2xl bg-gray-50 px-3.5 py-2.5">
+              <dt className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</dt>
+              <dd className="mt-0.5 text-lg font-black text-gray-900">{value}</dd>
+            </div>
+          ))}
+        </dl>
+
         <div className="mt-4 flex gap-2">
           {(
             [
@@ -643,7 +733,15 @@ export default function OrdersPanel({
         ) : (
           <ul className="mt-5 grid gap-4 lg:grid-cols-2">
             {shown.map((o) => (
-              <OrderCard key={o.id} order={o} now={now} printing={printing === o.id} onPrint={() => manualPrint(o)} onStatus={(s) => setStatus(o, s)} />
+              <OrderCard
+                key={o.id}
+                order={o}
+                now={now}
+                job={latestJob(jobs, o.id)}
+                onPrint={(ticket) => manualPrint(o, ticket)}
+                onCancelPrint={(id) => queue.cancel(id)}
+                onStatus={(s) => setStatus(o, s)}
+              />
             ))}
           </ul>
         )}
@@ -660,19 +758,65 @@ const STATUS_STYLE: Record<OrderStatus, string> = {
   cancelled: "bg-gray-100 text-gray-500",
 };
 
+function latestJob(jobs: PrintJob[], orderId: string): PrintJob | undefined {
+  for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].orderId === orderId) return jobs[i];
+  return undefined;
+}
+
+const JOB_STYLE: Record<PrintJob["status"], string> = {
+  preparing: "bg-gray-100 text-gray-600",
+  printing: "bg-blue-50 text-blue-700",
+  completed: "bg-green-50 text-green-700",
+  cancelled: "bg-gray-100 text-gray-500",
+  failed: "bg-red-50 text-red-700",
+};
+
+/** Print jobs in progress (and recent results), visible on every dashboard tab. */
+function PrintTray({ jobs, onCancel, onDismiss }: { jobs: PrintJob[]; onCancel: (id: string) => void; onDismiss: (id: string) => void }) {
+  if (jobs.length === 0) return null;
+  return (
+    <div className="fixed bottom-4 left-4 z-[90] w-[min(22rem,calc(100vw-2rem))] space-y-2" aria-live="polite">
+      {jobs.slice(-4).map((j) => (
+        <div key={j.id} className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-xl">
+          <span className={`mt-0.5 rounded-lg p-1.5 ${JOB_STYLE[j.status]}`}>
+            {isActive(j) ? <Loader2 className="h-4 w-4 animate-spin" /> : j.status === "completed" ? <Check className="h-4 w-4" /> : j.status === "failed" ? <CircleAlert className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-gray-900">{j.label}</p>
+            <p className="text-xs font-semibold text-gray-500">{JOB_LABEL[j.status]}{j.auto ? " · automatic" : ""}</p>
+            {j.error && <p className="mt-1 text-xs text-red-600">{j.error}</p>}
+          </div>
+          {isActive(j) ? (
+            <button type="button" onClick={() => onCancel(j.id)} className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+          ) : (
+            <button type="button" onClick={() => onDismiss(j.id)} aria-label="Dismiss" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function OrderCard({
   order,
   now,
-  printing,
+  job,
   onPrint,
+  onCancelPrint,
   onStatus,
 }: {
   order: Order;
   now: number;
-  printing: boolean;
-  onPrint: () => void;
+  job: PrintJob | undefined;
+  onPrint: (ticket: TicketKind) => void;
+  onCancelPrint: (jobId: string) => void;
   onStatus: (s: OrderStatus) => void;
 }) {
+  const busy = job !== undefined && isActive(job);
   const next: { status: OrderStatus; label: string } | null =
     order.status === "new" ? { status: "preparing", label: "Start preparing" } : order.status === "preparing" ? { status: "done", label: "Mark done" } : null;
   return (
@@ -731,10 +875,24 @@ function OrderCard({
             {next.label}
           </button>
         )}
-        <button type="button" onClick={onPrint} disabled={printing} className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
-          {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-          {order.printedAt ? "Reprint" : "Print"}
-        </button>
+        {busy ? (
+          <span className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {JOB_LABEL[job!.status]}…
+            <button type="button" onClick={() => onCancelPrint(job!.id)} className="ml-1 rounded-md bg-white px-2 py-0.5 text-blue-700 shadow-sm hover:bg-blue-100">
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <>
+            <button type="button" onClick={() => onPrint("receipt")} className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50">
+              <Printer className="h-3.5 w-3.5" /> {order.printedAt ? "Reprint receipt" : "Receipt"}
+            </button>
+            <button type="button" onClick={() => onPrint("kitchen")} className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50">
+              <CookingPot className="h-3.5 w-3.5" /> Kitchen
+            </button>
+            {job?.status === "failed" && <span className="self-center text-xs font-bold text-red-600">Print failed</span>}
+          </>
+        )}
         {(order.status === "new" || order.status === "preparing") && (
           <button type="button" onClick={() => onStatus("cancelled")} className="ml-auto flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-red-50 hover:text-red-600">
             <X className="h-3.5 w-3.5" /> Cancel

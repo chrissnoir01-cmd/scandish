@@ -7,6 +7,8 @@
 import { formatAmount, type Order } from "../orders";
 
 export type PaperWidth = 58 | 80;
+/** Receipt: full order with prices. Kitchen ticket: what to cook, big and without prices. */
+export type TicketKind = "receipt" | "kitchen";
 
 /** Characters per line in the printer's standard font. */
 const COLUMNS: Record<PaperWidth, number> = { 58: 32, 80: 48 };
@@ -30,7 +32,27 @@ export function orderTime(iso: string): string {
   }).format(d);
 }
 
-function layout(order: Order, restaurant: string, reprint: boolean): Line[] {
+function kitchenLayout(order: Order, reprint: boolean): Line[] {
+  const lines: Line[] = [
+    { kind: "text", text: `KITCHEN #${order.number}`, align: "center", bold: true, big: true },
+    { kind: "text", text: orderTime(order.createdAt), align: "center" },
+  ];
+  if (reprint) lines.push({ kind: "text", text: "(reprint)", align: "center" });
+  lines.push({ kind: "rule" });
+  if (order.table) lines.push({ kind: "text", text: `TABLE ${order.table}`, bold: true, big: true });
+  if (order.phone && !order.table) lines.push({ kind: "text", text: `PHONE ${order.phone}`, bold: true });
+  lines.push({ kind: "rule" });
+  for (const l of order.items) lines.push({ kind: "text", text: `${l.qty} x ${l.name}`, bold: true, big: true });
+  if (order.note) {
+    lines.push({ kind: "rule" });
+    lines.push({ kind: "text", text: `NOTE: ${order.note}`, bold: true, big: true });
+  }
+  lines.push({ kind: "rule" });
+  return lines;
+}
+
+function layout(order: Order, restaurant: string, reprint: boolean, ticket: TicketKind = "receipt"): Line[] {
+  if (ticket === "kitchen") return kitchenLayout(order, reprint);
   const lines: Line[] = [
     { kind: "text", text: restaurant, align: "center", bold: true, big: true },
     { kind: "text", text: `ORDER #${order.number}`, align: "center", bold: true, big: true },
@@ -93,7 +115,7 @@ function wrap(text: string, width: number): string[] {
 const ESC = 0x1b;
 const GS = 0x1d;
 
-export function escposReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false): Uint8Array<ArrayBuffer> {
+export function escposReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false, ticket: TicketKind = "receipt"): Uint8Array<ArrayBuffer> {
   const cols = COLUMNS[width];
   const bytes: number[] = [];
   const push = (...b: number[]) => bytes.push(...b);
@@ -103,7 +125,7 @@ export function escposReceipt(order: Order, restaurant: string, width: PaperWidt
   const lf = () => push(0x0a);
 
   push(ESC, 0x40); // reset
-  for (const line of layout(order, restaurant, reprint)) {
+  for (const line of layout(order, restaurant, reprint, ticket)) {
     if (line.kind === "rule") {
       push(ESC, 0x61, 0);
       text("-".repeat(cols));
@@ -138,9 +160,9 @@ export function escposReceipt(order: Order, restaurant: string, width: PaperWidt
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function htmlReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false): string {
+export function htmlReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false, ticket: TicketKind = "receipt"): string {
   const printable = width === 80 ? 72 : 48; // mm the print head covers
-  const rows = layout(order, restaurant, reprint)
+  const rows = layout(order, restaurant, reprint, ticket)
     .map((l) => {
       if (l.kind === "rule") return `<hr>`;
       if (l.kind === "pair") return `<div class="pair${l.bold ? " b" : ""}"><span>${esc(l.left)}</span><span>${esc(l.right)}</span></div>`;

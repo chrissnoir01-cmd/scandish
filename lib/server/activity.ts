@@ -10,6 +10,7 @@ const CATEGORY: Record<ActivityType, ActivityCategory> = {
   "auth.admin_login": "auth",
   "auth.signup": "auth",
   "auth.signup_failed": "security",
+  "auth.email_changed": "security",
   "restaurant.saved": "restaurant",
   "restaurant.upload": "restaurant",
   "admin.company_created": "admin",

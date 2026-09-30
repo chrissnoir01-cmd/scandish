@@ -255,6 +255,12 @@ function OrderSheet({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState<{ number: number; table: string } | null>(null);
+  /** Same code for every retry of this order, so a lost connection can't create it twice. */
+  const sendRef = useRef("");
+  // A changed order is a new order.
+  useEffect(() => {
+    sendRef.current = "";
+  }, [cart]);
 
   // Remember the table for the next round of ordering in this visit.
   useEffect(() => {
@@ -288,6 +294,7 @@ function OrderSheet({
     if (!t && !phone.trim()) return setError("Enter your table number or your phone number.");
     if (p === null) return setError("That phone number doesn't look right.");
     setSending(true);
+    sendRef.current ||= crypto.randomUUID().replace(/-/g, "");
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -299,6 +306,7 @@ function OrderSheet({
           phone: p,
           note: note.trim(),
           website,
+          ref: sendRef.current,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -315,6 +323,7 @@ function OrderSheet({
         // Not remembered.
       }
       setSent({ number: data.number, table: t });
+      sendRef.current = "";
       setNote("");
       onSent();
     } catch (err) {

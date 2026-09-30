@@ -16,6 +16,7 @@ import { normalizeSubdomain, subdomainHost, subdomainProblem } from "@/lib/domai
 import { revalidateSubdomain, subdomainsCol } from "@/lib/server/subdomains";
 import { deleteUnusedImages, findUnusedImages } from "@/lib/server/image-cleanup";
 import { inTrial } from "@/lib/subscription";
+import { adminViewCounts, type ViewCount } from "@/lib/server/analytics";
 import type {
   AccountSummary,
   ActionResult,
@@ -789,5 +790,15 @@ export async function updateContact(idToken: string, input: { phone: string; wha
     return { ok: true, data: saved };
   } catch (err) {
     return fail(err, "Could not save the contact details");
+  }
+}
+
+/** Visit counters for the company cards (refreshed by MasterAdmin every 30 seconds). */
+export async function loadViewCounts(idToken: string): Promise<ActionResult<Record<string, ViewCount>>> {
+  try {
+    await requireAdmin(idToken);
+    return { ok: true, data: await adminViewCounts() };
+  } catch (err) {
+    return fail(err, "Could not load visit counts");
   }
 }

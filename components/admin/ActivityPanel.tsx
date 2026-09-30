@@ -58,6 +58,7 @@ const ICONS: Record<ActivityType, LucideIcon> = {
   "support.password_reissued": KeyRound,
   "restaurant.password_set": KeyRound,
   "restaurant.orders_toggled": Store,
+  "auth.email_changed": KeyRound,
   "contract.generated": FileText,
   "document.viewed": FileText,
   "admin.settings_changed": Settings,

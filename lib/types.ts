@@ -237,6 +237,7 @@ export type ActivityType =
   | "auth.admin_login"
   | "auth.signup"
   | "auth.signup_failed"
+  | "auth.email_changed"
   | "restaurant.saved"
   | "restaurant.upload"
   | "admin.company_created"

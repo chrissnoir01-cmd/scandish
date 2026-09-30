@@ -85,8 +85,14 @@ export default function SecurityCenter({
   }, []);
 
   useEffect(() => {
+    if (locked) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads when the device may see them
-    if (!locked) void load();
+    void load();
+    // Devices and the log refresh by themselves while this screen is open.
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 60_000);
+    return () => clearInterval(timer);
   }, [locked, load]);
 
   const signOut = async (d: DeviceSession) => {

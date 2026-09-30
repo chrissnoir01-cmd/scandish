@@ -66,7 +66,11 @@ export async function recordView(slug: string, v: { source: ViewSource; unique: 
     },
     { merge: true }
   );
-  batch.set(adminDb().collection("analytics").doc(uid), { total: inc, lastViewAt: new Date().toISOString() }, { merge: true });
+  batch.set(
+    adminDb().collection("analytics").doc(uid),
+    { total: inc, lastViewAt: new Date().toISOString(), ...(v.source === "qr" ? { qrTotal: inc } : {}) },
+    { merge: true }
+  );
   await batch.commit();
   return true;
 }
@@ -110,4 +114,47 @@ export async function getAnalytics(uid: string): Promise<Analytics> {
     hours,
     allTime: num(totals.get("total")),
   };
+}
+
+export interface ViewCount {
+  /** Every counted visit since the page went live. */
+  total: number;
+  today: number;
+  /** Visits that came from scanning the QR code. */
+  qr: number;
+  lastViewAt: string;
+}
+
+/**
+ * Visit counters for every business, by company id (MasterAdmin cards). Reads one summary document
+ * per restaurant plus today's; a QR total missing from older records is filled in once from history.
+ */
+export async function adminViewCounts(): Promise<Record<string, ViewCount>> {
+  const db = adminDb();
+  const restaurants = (await db.collection("restaurants").select("companyId").get()).docs.filter((r) => typeof r.get("companyId") === "string");
+  if (!restaurants.length) return {};
+  const { day } = kigaliParts();
+  const [roots, todays] = await Promise.all([
+    db.getAll(...restaurants.map((r) => db.collection("analytics").doc(r.id))),
+    db.getAll(...restaurants.map((r) => days(r.id).doc(day))),
+  ]);
+  const out: Record<string, ViewCount> = {};
+  await Promise.all(
+    restaurants.map(async (r, i) => {
+      const root = roots[i];
+      let qr = num(root.get("qrTotal"));
+      if (root.exists && root.get("qrTotal") === undefined) {
+        const history = await days(r.id).select("sources").get();
+        qr = history.docs.reduce((n, d) => n + num((d.get("sources") ?? {}).qr), 0);
+        await root.ref.set({ qrTotal: qr }, { merge: true });
+      }
+      out[r.get("companyId") as string] = {
+        total: num(root.get("total")),
+        today: num(todays[i].get("views")),
+        qr,
+        lastViewAt: typeof root.get("lastViewAt") === "string" ? root.get("lastViewAt") : "",
+      };
+    })
+  );
+  return out;
 }

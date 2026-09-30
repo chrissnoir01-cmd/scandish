@@ -58,8 +58,10 @@ function parseRequest(raw: unknown) {
   if (phone === null) throw new ValidationError("Please enter a valid phone number");
   if (!table && !phone) throw new ValidationError("Enter your table number or your phone number");
   const note = s(v.note).trim().slice(0, ORDER_LIMITS.note);
+  // One code per "Send" on the guest's phone: a retry after a lost connection returns the same order.
+  const ref = /^[A-Za-z0-9_-]{12,64}$/.test(s(v.ref)) ? s(v.ref) : "";
 
-  return { slug, lines, table, phone, note };
+  return { slug, lines, table, phone, note, ref };
 }
 
 /**
@@ -110,11 +112,13 @@ export async function placeOrder(raw: unknown, meta: { device: string }): Promis
   const total = items.reduce((n, l) => n + (l.lineTotal ?? 0), 0);
   const now = new Date();
   const { day } = kigaliParts(now);
-  const ref = ordersCol(uid).doc();
+  const ref = req.ref ? ordersCol(uid).doc(`g_${req.ref}`) : ordersCol(uid).doc();
 
-  // The subscription check and the daily counter are read together: one trip to the database.
+  // The subscription check, the daily counter and any earlier copy of this order are read together.
   const number = await db.runTransaction(async (tx) => {
-    const [counter, companySnap] = await tx.getAll(counterDoc(uid), db.collection("companies").doc(companyId));
+    const [counter, companySnap, existing] = await tx.getAll(counterDoc(uid), db.collection("companies").doc(companyId), ref);
+    // Sent twice (double tap or retry): it's the same order.
+    if (existing.exists) return Number(existing.get("number")) || 0;
     const company = companySnap.data();
     if (!isPubliclyVisible({ status: company?.status as CompanyStatus, subscriptionEnd: s(company?.subscriptionEnd), trialEndsAt: s(company?.trialEndsAt) })) {
       throw new OrderClosedError(closed);

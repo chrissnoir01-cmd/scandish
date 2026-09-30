@@ -3,7 +3,7 @@
 import { requireUser } from "@/lib/server/auth";
 import { logActivity } from "@/lib/server/activity";
 import { getAnalytics } from "@/lib/server/analytics";
-import { getDashboardData, saveRestaurantContent, setMenuItemHidden } from "@/lib/server/restaurants";
+import { getDashboardData, saveRestaurantContent, setMenuItemHidden, syncLoginEmail } from "@/lib/server/restaurants";
 import { dashboardAccess, securityLog, securityState } from "@/lib/server/dashboard-security";
 import { fail } from "@/lib/server/result";
 import { parseRestaurantContent, ValidationError } from "@/lib/server/validate";
@@ -14,6 +14,16 @@ import type { ActionResult, Analytics, DashboardData } from "@/lib/types";
 export async function loadDashboard(idToken: string): Promise<ActionResult<DashboardData | null>> {
   try {
     const access = await dashboardAccess(idToken);
+    const previous = await syncLoginEmail(access.user.uid, access.user.email);
+    if (previous) {
+      await logActivity({
+        type: "auth.email_changed",
+        message: `Login email changed from ${previous} to ${access.user.email}`,
+        actor: { uid: access.user.uid, email: access.user.email },
+        target: { kind: "account", id: access.user.uid, name: access.user.email },
+      });
+      await securityLog(access, "Login email changed", `${previous} → ${access.user.email}`);
+    }
     const data = await getDashboardData(access.user.uid);
     return { ok: true, data: data && { ...data, security: securityState(access) } };
   } catch (err) {

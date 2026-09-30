@@ -308,3 +308,32 @@ export async function setMenuItemHidden(uid: string, key: string, hidden: boolea
   revalidateRestaurant(result.slug);
   return result;
 }
+
+/**
+ * After the owner changes their login email (Firebase confirms it by email), copies of the address
+ * in ScanDish records follow. Everything else is linked by the account id, so nothing else moves.
+ * Returns the previous address when something changed.
+ */
+export async function syncLoginEmail(uid: string, email: string | undefined): Promise<string | null> {
+  const next = (email ?? "").toLowerCase();
+  if (!next) return null;
+  const db = adminDb();
+  const userRef = db.collection("users").doc(uid);
+  const user = await userRef.get();
+  const previous = s(user.get("email")).toLowerCase();
+  if (!user.exists || previous === next) return null;
+
+  const now = new Date().toISOString();
+  const batch = db.batch();
+  batch.set(userRef, { email: next, emailChangedAt: now, previousEmail: previous }, { merge: true });
+  const restaurant = await db.collection("restaurants").doc(uid).get();
+  if (restaurant.exists) batch.update(restaurant.ref, { ownerEmail: next });
+  const companyId = s(restaurant.get("companyId"));
+  if (companyId) {
+    const company = await db.collection("companies").doc(companyId).get();
+    // The business contact email follows only when it was the same address as the login.
+    if (company.exists && s(company.get("email")).toLowerCase() === previous) batch.update(company.ref, { email: next, updatedAt: now });
+  }
+  await batch.commit();
+  return previous;
+}

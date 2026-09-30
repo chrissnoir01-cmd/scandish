@@ -8,6 +8,7 @@ import {
   createCompany as createCompanyAction,
   deleteCompany as deleteCompanyAction,
   listCompanies,
+  loadViewCounts,
   renewSubscription as renewAction,
   setCompanyStatus,
   setShowOnHomepage,
@@ -16,6 +17,8 @@ import {
 } from "../actions/admin";
 import { daysRemaining as getDaysRemaining } from "../../lib/subscription";
 import type { Company, Plan, PremiumTemplate } from "../../lib/types";
+import type { ViewCount } from "@/lib/server/analytics";
+import { Eye } from "lucide-react";
 import { PoweredBy } from "@/components/auth/AuthCard";
 import ActivityPanel from "@/components/admin/ActivityPanel";
 import AccountsPanel from "@/components/admin/AccountsPanel";
@@ -66,6 +69,7 @@ export default function MasterAdminPage() {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"companies" | "activity" | "studio" | "support" | "accounts" | "settings">("companies");
   const [contractBusy, setContractBusy] = useState<string | null>(null);
+  const [views, setViews] = useState<{ counts: Record<string, ViewCount>; at: number }>({ counts: {}, at: 0 });
 
   const loadCompanies = useCallback(async () => {
     const res = await listCompanies(await getIdToken());
@@ -94,6 +98,29 @@ export default function MasterAdminPage() {
     });
     return () => unsub();
   }, [router, loadCompanies]);
+
+  // Visit counters on the company cards: refreshed every 30 seconds while this page is open and visible.
+  useEffect(() => {
+    if (checking || view !== "companies") return;
+    let stopped = false;
+    const load = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await loadViewCounts(await getIdToken());
+        if (!stopped && res.ok) setViews({ counts: res.data, at: Date.now() });
+      } catch {
+        // Next refresh will try again.
+      }
+    };
+    void load();
+    const timer = setInterval(load, 30_000);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [checking, view]);
 
   /** Runs an admin action, reports its error, and reloads the list on success. */
   const run = async (action: (token: string) => Promise<{ ok: boolean; error?: string }>) => {
@@ -316,7 +343,10 @@ export default function MasterAdminPage() {
                   <div key={company.id} className="border border-[#f2ddd6] rounded-3xl p-4 bg-[#fffdfb]">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
-                        <h3 className="text-lg font-bold">{company.companyName}</h3>
+                        <h3 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+                          {company.companyName}
+                          <ViewBadge count={views.counts[company.id]} now={views.at} />
+                        </h3>
                         <p className="text-sm text-gray-500">Manager: {company.managerName}</p>
                         <p className="text-sm text-gray-500">Phone: {company.phone}</p>
                         <p className="text-sm text-gray-500">Email: {company.email || "No email"}</p>
@@ -667,5 +697,30 @@ function Dialog({ title, danger, children }: { title: string; danger?: boolean; 
         {children}
       </div>
     </div>
+  );
+}
+
+/** 👁 total visits of the public page, with today's visits, QR scans and a live dot for recent activity. */
+function ViewBadge({ count, now }: { count: ViewCount | undefined; now: number }) {
+  if (!count) return null;
+  const minutes = count.lastViewAt ? (now - new Date(count.lastViewAt).getTime()) / 60_000 : Infinity;
+  const live = minutes < 5;
+  const title = [
+    `${count.total.toLocaleString("en-US")} visits in total`,
+    `${count.today.toLocaleString("en-US")} today`,
+    `${count.qr.toLocaleString("en-US")} from QR scans`,
+    count.lastViewAt ? `last visit ${minutes < 1 ? "just now" : minutes < 60 ? `${Math.round(minutes)} min ago` : new Date(count.lastViewAt).toLocaleString("en-GB")}` : "no visits yet",
+  ].join(" · ");
+  return (
+    <span title={title} className="inline-flex items-center gap-1.5 rounded-full border border-[#f2ddd6] bg-white px-2.5 py-0.5 text-xs font-bold text-gray-700">
+      {live && (
+        <span className="relative flex h-2 w-2" aria-label="Visited in the last 5 minutes">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+        </span>
+      )}
+      <Eye className="h-3.5 w-3.5 text-[#f08c6c]" /> {count.total.toLocaleString("en-US")}
+      <span className="font-medium text-gray-400">· today {count.today.toLocaleString("en-US")} · QR {count.qr.toLocaleString("en-US")}</span>
+    </span>
   );
 }

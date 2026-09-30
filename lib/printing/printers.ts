@@ -9,16 +9,32 @@
  * The first three print silently. "system" prints silently when Chrome runs with --kiosk-printing.
  */
 
-import { escposReceipt, htmlReceipt, type PaperWidth } from "./receipt";
+import { escposReceipt, htmlReceipt, type PaperWidth, type TicketKind } from "./receipt";
 import type { Order } from "../orders";
 
 export type PrinterKind = "bluetooth" | "usb" | "serial" | "system";
 
+/** One thing to print. */
+export interface PrintPayload {
+  order: Order;
+  restaurant: string;
+  width: PaperWidth;
+  reprint?: boolean;
+  ticket?: TicketKind;
+}
+
 export interface PrinterConnection {
   kind: PrinterKind;
   name: string;
-  print: (order: Order, restaurant: string, width: PaperWidth, reprint?: boolean) => Promise<void>;
+  /** Resolves when the printer has the data; stops early (AbortError) when `signal` is aborted. */
+  print: (job: PrintPayload, signal?: AbortSignal) => Promise<void>;
   disconnect: () => Promise<void>;
+}
+
+const bytesFor = (j: PrintPayload) => escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket);
+
+function checkAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException("Printing cancelled", "AbortError");
 }
 
 /* Minimal typings for the Web Bluetooth / WebUSB / Web Serial APIs (not in TypeScript's DOM library). */
@@ -115,13 +131,15 @@ async function bluetoothConnection(device: BtDevice): Promise<PrinterConnection>
 
   characteristic = await findCharacteristic();
 
-  const write = async (data: Uint8Array<ArrayBuffer>) => {
+  const write = async (data: Uint8Array<ArrayBuffer>, signal?: AbortSignal) => {
     // Printers switch off or go out of range; reconnect before each receipt when needed.
     if (!device.gatt?.connected || !characteristic) characteristic = await findCharacteristic();
+    checkAborted(signal);
     const ch = characteristic;
     const withResponse = ch.properties.write;
     const size = withResponse ? 180 : 20;
     for (let i = 0; i < data.length; i += size) {
+      checkAborted(signal);
       const chunk = data.slice(i, i + size);
       if (withResponse) await ch.writeValueWithResponse(chunk);
       else {
@@ -134,7 +152,7 @@ async function bluetoothConnection(device: BtDevice): Promise<PrinterConnection>
   return {
     kind: "bluetooth",
     name: device.name || "Bluetooth printer",
-    print: (order, restaurant, width, reprint) => write(escposReceipt(order, restaurant, width, reprint)),
+    print: (job, signal) => write(bytesFor(job), signal),
     disconnect: async () => device.gatt?.disconnect(),
   };
 }
@@ -168,8 +186,13 @@ async function usbConnection(device: UsbDevice): Promise<PrinterConnection> {
   return {
     kind: "usb",
     name: [device.manufacturerName, device.productName].filter(Boolean).join(" ") || "USB printer",
-    print: async (order, restaurant, width, reprint) => {
-      await device.transferOut(endpoint, escposReceipt(order, restaurant, width, reprint));
+    print: async (job, signal) => {
+      const data = bytesFor(job);
+      // Sent in pieces so a cancel stops between them.
+      for (let i = 0; i < data.length; i += 4096) {
+        checkAborted(signal);
+        await device.transferOut(endpoint, data.slice(i, i + 4096));
+      }
     },
     disconnect: () => device.close().catch(() => {}),
   };
@@ -189,11 +212,15 @@ async function serialConnection(port: SerialPortLike, label: string): Promise<Pr
   return {
     kind: "serial",
     name: label,
-    print: async (order, restaurant, width, reprint) => {
+    print: async (job, signal) => {
       if (!port.writable) throw new Error("The printer is not connected.");
+      const data = bytesFor(job);
       const writer = port.writable.getWriter();
       try {
-        await writer.write(escposReceipt(order, restaurant, width, reprint));
+        for (let i = 0; i < data.length; i += 512) {
+          checkAborted(signal);
+          await writer.write(data.slice(i, i + 512));
+        }
       } finally {
         writer.releaseLock();
       }
@@ -210,8 +237,9 @@ const serialRef = (port: SerialPortLike) => {
 /* ---------- Printer installed on the computer ---------- */
 
 /** Prints through the browser's print window into a hidden frame sized to the receipt paper. */
-function printHtml(html: string): Promise<void> {
-  return new Promise((resolve) => {
+function printHtml(html: string, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Printing cancelled", "AbortError"));
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
     frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
@@ -222,7 +250,23 @@ function printHtml(html: string): Promise<void> {
       setTimeout(() => frame.remove(), 1000);
       resolve();
     };
+    // A frame that never loads must not leave the job hanging.
+    const giveUp = setTimeout(() => {
+      if (done) return;
+      done = true;
+      frame.remove();
+      reject(new Error("The print window didn't open. Try again."));
+    }, 15_000);
+    signal?.addEventListener("abort", () => {
+      if (done) return;
+      done = true;
+      clearTimeout(giveUp);
+      frame.remove();
+      reject(new DOMException("Printing cancelled", "AbortError"));
+    });
     frame.onload = () => {
+      clearTimeout(giveUp);
+      if (done) return;
       const w = frame.contentWindow;
       if (!w) return finish();
       w.addEventListener("afterprint", finish);
@@ -239,7 +283,7 @@ function printHtml(html: string): Promise<void> {
 const systemConnection: PrinterConnection = {
   kind: "system",
   name: "Printer installed on this computer",
-  print: (order, restaurant, width, reprint) => printHtml(htmlReceipt(order, restaurant, width, reprint)),
+  print: (j, signal) => printHtml(htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket), signal),
   disconnect: async () => {},
 };
 
