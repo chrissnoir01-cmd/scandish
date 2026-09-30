@@ -10,12 +10,30 @@ export type PaperWidth = 58 | 80;
 /** Receipt: full order with prices. Kitchen ticket: what to cook, big and without prices. */
 export type TicketKind = "receipt" | "kitchen";
 
+/** A black-and-white picture for thermal printers: `data` is rows of bits, 1 = black, left bit first. */
+export interface Raster {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
+/** What goes at the foot of a receipt. */
+export interface ReceiptFooter {
+  /** The restaurant's web address, e.g. "kiza-restaurant.scandish.online". */
+  address?: string;
+  /** ScanDish logo for thermal printers. */
+  logo?: Raster | null;
+  /** ScanDish logo URL for printers installed on the computer. */
+  logoUrl?: string;
+}
+
 /** Characters per line in the printer's standard font. */
 const COLUMNS: Record<PaperWidth, number> = { 58: 32, 80: 48 };
 
 type Line =
   | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean }
   | { kind: "rule" }
+  | { kind: "logo" }
   | { kind: "pair"; left: string; right: string; bold?: boolean };
 
 export function orderTime(iso: string): string {
@@ -51,7 +69,7 @@ function kitchenLayout(order: Order, reprint: boolean): Line[] {
   return lines;
 }
 
-function layout(order: Order, restaurant: string, reprint: boolean, ticket: TicketKind = "receipt"): Line[] {
+function layout(order: Order, restaurant: string, reprint: boolean, ticket: TicketKind = "receipt", footer: ReceiptFooter = {}): Line[] {
   if (ticket === "kitchen") return kitchenLayout(order, reprint);
   const lines: Line[] = [
     { kind: "text", text: restaurant, align: "center", bold: true, big: true },
@@ -74,7 +92,13 @@ function layout(order: Order, restaurant: string, reprint: boolean, ticket: Tick
     lines.push({ kind: "text", text: `NOTE: ${order.note}`, bold: true });
   }
   lines.push({ kind: "rule" });
-  lines.push({ kind: "text", text: "Ordered from the menu - ScanDish", align: "center" });
+  // Foot: the restaurant's own page address, then the ScanDish logo.
+  if (footer.address) {
+    lines.push({ kind: "text", text: "Order again or see our menu:", align: "center" });
+    lines.push({ kind: "text", text: footer.address, align: "center", bold: true });
+  }
+  lines.push({ kind: "logo" });
+  lines.push({ kind: "text", text: "Powered by ScanDish", align: "center" });
   return lines;
 }
 
@@ -115,7 +139,14 @@ function wrap(text: string, width: number): string[] {
 const ESC = 0x1b;
 const GS = 0x1d;
 
-export function escposReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false, ticket: TicketKind = "receipt"): Uint8Array<ArrayBuffer> {
+export function escposReceipt(
+  order: Order,
+  restaurant: string,
+  width: PaperWidth,
+  reprint = false,
+  ticket: TicketKind = "receipt",
+  footer: ReceiptFooter = {}
+): Uint8Array<ArrayBuffer> {
   const cols = COLUMNS[width];
   const bytes: number[] = [];
   const push = (...b: number[]) => bytes.push(...b);
@@ -125,7 +156,18 @@ export function escposReceipt(order: Order, restaurant: string, width: PaperWidt
   const lf = () => push(0x0a);
 
   push(ESC, 0x40); // reset
-  for (const line of layout(order, restaurant, reprint, ticket)) {
+  for (const line of layout(order, restaurant, reprint, ticket, footer)) {
+    if (line.kind === "logo") {
+      const logo = footer.logo;
+      if (!logo) continue;
+      // GS v 0: print a raster image, centred.
+      const rowBytes = Math.ceil(logo.width / 8);
+      push(ESC, 0x61, 1, 0x0a);
+      push(GS, 0x76, 0x30, 0x00, rowBytes & 0xff, rowBytes >> 8, logo.height & 0xff, logo.height >> 8);
+      for (const b of logo.data) bytes.push(b);
+      lf();
+      continue;
+    }
     if (line.kind === "rule") {
       push(ESC, 0x61, 0);
       text("-".repeat(cols));
@@ -160,11 +202,19 @@ export function escposReceipt(order: Order, restaurant: string, width: PaperWidt
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function htmlReceipt(order: Order, restaurant: string, width: PaperWidth, reprint = false, ticket: TicketKind = "receipt"): string {
+export function htmlReceipt(
+  order: Order,
+  restaurant: string,
+  width: PaperWidth,
+  reprint = false,
+  ticket: TicketKind = "receipt",
+  footer: ReceiptFooter = {}
+): string {
   const printable = width === 80 ? 72 : 48; // mm the print head covers
-  const rows = layout(order, restaurant, reprint, ticket)
+  const rows = layout(order, restaurant, reprint, ticket, footer)
     .map((l) => {
       if (l.kind === "rule") return `<hr>`;
+      if (l.kind === "logo") return footer.logoUrl ? `<div class="c logo"><img src="${esc(footer.logoUrl)}" alt="ScanDish"></div>` : "";
       if (l.kind === "pair") return `<div class="pair${l.bold ? " b" : ""}"><span>${esc(l.left)}</span><span>${esc(l.right)}</span></div>`;
       return `<div class="${[l.align === "center" ? "c" : "", l.bold ? "b" : "", l.big ? "big" : ""].join(" ")}">${esc(l.text)}</div>`;
     })
@@ -177,5 +227,6 @@ body{width:${printable}mm;margin:0 auto;padding:2mm 0 6mm;font:12px/1.35 "Courie
 .c{text-align:center}.b{font-weight:700}.big{font-size:17px;line-height:1.25}
 hr{border:0;border-top:1px dashed #000;margin:4px 0}
 .pair{display:flex;justify-content:space-between;gap:8px}.pair span:last-child{white-space:nowrap}
+.logo{margin-top:6px}.logo img{width:18mm;height:auto;filter:grayscale(1) brightness(0.6) contrast(10)}
 </style></head><body>${rows}</body></html>`;
 }

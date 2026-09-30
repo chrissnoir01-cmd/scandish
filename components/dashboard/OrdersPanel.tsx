@@ -19,6 +19,7 @@ import {
   X,
   CookingPot,
   Ban,
+  BellRing,
 } from "lucide-react";
 import { auth, getIdToken } from "@/lib/firebase";
 import { claimPrint, loadOrders, releasePrint, updateOrderStatus, updateOrdersOpen } from "@/app/actions/orders";
@@ -118,6 +119,8 @@ function chime() {
 }
 
 const msFromNow = (ms: number) => Date.now() + ms;
+/** How long the new-order sound plays unless someone taps "Seen". */
+const ALERT_MS = 5_000;
 
 /** YYYY-MM-DD in Kigali, matching the day stored on each order. */
 const kigaliDay = (ms: number) =>
@@ -139,12 +142,15 @@ type Filter = "active" | "done" | "all";
  */
 export default function OrdersPanel({
   restaurantName,
+  pageAddress,
   initialOpen,
   visible,
   onNewCount,
   notify: notifyProp,
 }: {
   restaurantName: string;
+  /** The restaurant's web address, printed at the foot of receipts. */
+  pageAddress: string;
   initialOpen: boolean;
   visible: boolean;
   onNewCount: (n: number) => void;
@@ -221,6 +227,49 @@ export default function OrdersPanel({
 
   /* ----- Orders: first load, then live updates (polling if live is unavailable) ----- */
 
+  /* ----- New-order alert: rings for 5 seconds; "Seen" (or any action on the order) stops it ----- */
+
+  const [alert, setAlert] = useState<{ ids: string[]; text: string } | null>(null);
+  const ringing = useRef<{ repeat: ReturnType<typeof setInterval>; stop: ReturnType<typeof setTimeout> } | null>(null);
+
+  const silence = useCallback(() => {
+    if (!ringing.current) return;
+    clearInterval(ringing.current.repeat);
+    clearTimeout(ringing.current.stop);
+    ringing.current = null;
+  }, []);
+
+  const acknowledge = useCallback(() => {
+    silence();
+    setAlert(null);
+  }, [silence]);
+
+  const ring = useCallback(
+    (fresh: Order[]) => {
+      silence();
+      chime();
+      const repeat = setInterval(chime, 1000);
+      const stop = setTimeout(silence, ALERT_MS);
+      ringing.current = { repeat, stop };
+      setAlert((prev) => {
+        const ids = [...(prev?.ids ?? []), ...fresh.map((o) => o.id)];
+        const text =
+          ids.length === 1
+            ? `New order #${fresh[0].number}${fresh[0].table ? ` · table ${fresh[0].table}` : ""}`
+            : `${ids.length} new orders`;
+        return { ids, text };
+      });
+    },
+    [silence]
+  );
+
+  useEffect(() => silence, [silence]);
+
+  /** Any action on an order that is ringing counts as "seen". */
+  const seen = (orderId: string) => {
+    if (alert?.ids.includes(orderId)) acknowledge();
+  };
+
   const receive = useCallback((incoming: Order[]) => {
     const now = Date.now();
     const list = incoming.map((o) => {
@@ -234,15 +283,12 @@ export default function OrdersPanel({
     });
     if (known.current) {
       const fresh = list.filter((o) => !known.current!.has(o.id) && o.status === "new");
-      if (fresh.length) {
-        chime();
-        notify(fresh.length === 1 ? `New order #${fresh[0].number}${fresh[0].table ? ` · table ${fresh[0].table}` : ""}` : `${fresh.length} new orders`);
-      }
+      if (fresh.length) ring(fresh);
     }
     known.current = new Set(list.map((o) => o.id));
     setOrders(list);
     setLoaded(true);
-  }, [notify]);
+  }, [ring]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,7 +391,7 @@ export default function OrdersPanel({
         run: async (signal) => {
           const target = opts.via ?? (await connectPrinter("system")).connection;
           for (const ticket of tickets) {
-            await target.print({ order, restaurant: restaurantName, width: settings.width, reprint: opts.reprint, ticket }, signal);
+            await target.print({ order, restaurant: restaurantName, width: settings.width, reprint: opts.reprint, ticket, address: pageAddress }, signal);
           }
         },
         after: async (status) => {
@@ -361,7 +407,7 @@ export default function OrdersPanel({
         },
       });
     },
-    [queue, restaurantName, settings.width, notify]
+    [queue, restaurantName, pageAddress, settings.width, notify]
   );
 
   // Auto-print: every new, unprinted order gets one automatic attempt on this device.
@@ -377,6 +423,7 @@ export default function OrdersPanel({
   }, [orders, printer, settings.auto, settings.tickets, loaded, queuePrint]);
 
   const manualPrint = (order: Order, ticket: TicketKind) => {
+    seen(order.id);
     const ok = queuePrint(order, [ticket], { auto: false, reprint: ticket === "receipt" && Boolean(order.printedAt), via: printer });
     if (!ok) notify(`Order #${order.number} is already printing`);
   };
@@ -462,6 +509,7 @@ export default function OrdersPanel({
   };
 
   const setStatus = async (order: Order, status: OrderStatus) => {
+    seen(order.id);
     pendingStatus.current.set(order.id, { status, until: msFromNow(30_000) });
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status } : o)));
     try {
@@ -496,7 +544,22 @@ export default function OrdersPanel({
     { kind: "system", label: "Printer installed on this computer", hint: "Wi-Fi, network or any printer with a driver", Icon: Monitor },
   ];
 
-  const tray = <PrintTray jobs={jobs} onCancel={(id) => queue.cancel(id)} onDismiss={(id) => queue.dismiss(id)} />;
+  const tray = (
+    <>
+      {alert && (
+        <div role="alert" className="fixed left-1/2 top-24 z-[95] flex w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-2xl bg-[#f08c6c] p-4 text-white shadow-2xl">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+            <BellRing className="h-5 w-5 animate-bounce" />
+          </span>
+          <p className="flex-1 font-black">{alert.text}</p>
+          <button type="button" onClick={acknowledge} className="rounded-xl bg-white px-4 py-2 text-sm font-black text-[#c4532f] shadow">
+            Seen
+          </button>
+        </div>
+      )}
+      <PrintTray jobs={jobs} onCancel={(id) => queue.cancel(id)} onDismiss={(id) => queue.dismiss(id)} />
+    </>
+  );
   if (!visible) return tray;
 
   return (
@@ -682,7 +745,7 @@ export default function OrdersPanel({
               </>
             )}
             <span className="text-gray-300">·</span>
-            <Volume2 className="h-3.5 w-3.5" /> Sound on new orders
+            <Volume2 className="h-3.5 w-3.5" /> Rings 5 s on new orders — tap Seen to stop
           </span>
         </div>
 

@@ -8,7 +8,7 @@ import { loadAnalytics, loadDashboard, saveDashboard, setProductHidden } from ".
 import { logoutThisDevice } from "../actions/security";
 import { GRACE_DAYS } from "../../lib/subscription";
 import { PREMIUM_BUILD_DAYS } from "../../lib/premium";
-import { subdomainHost, subdomainUrl } from "../../lib/domains";
+import { ROOT_DOMAIN, subdomainHost, subdomainUrl } from "../../lib/domains";
 import type { Analytics, MenuCategory, MenuItem, Offer } from "../../lib/types";
 import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
@@ -985,6 +985,7 @@ export default function DashboardPage() {
           {plan === "premium" && (
             <OrdersPanel
               restaurantName={name}
+              pageAddress={subdomain ? subdomainHost(subdomain) : `${ROOT_DOMAIN}/r/${slug}`}
               initialOpen={ordersOpen}
               visible={activeTab === "orders"}
               onNewCount={setNewOrders}

@@ -9,7 +9,7 @@
  * The first three print silently. "system" prints silently when Chrome runs with --kiosk-printing.
  */
 
-import { escposReceipt, htmlReceipt, type PaperWidth, type TicketKind } from "./receipt";
+import { escposReceipt, htmlReceipt, type PaperWidth, type Raster, type TicketKind } from "./receipt";
 import type { Order } from "../orders";
 
 export type PrinterKind = "bluetooth" | "usb" | "serial" | "system";
@@ -21,6 +21,8 @@ export interface PrintPayload {
   width: PaperWidth;
   reprint?: boolean;
   ticket?: TicketKind;
+  /** The restaurant's web address, printed at the foot of receipts. */
+  address?: string;
 }
 
 export interface PrinterConnection {
@@ -31,7 +33,44 @@ export interface PrinterConnection {
   disconnect: () => Promise<void>;
 }
 
-const bytesFor = (j: PrintPayload) => escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket);
+const LOGO_URL = "/app/icon-192.png";
+const LOGO_DOTS = 160; // about 20 mm wide on a 203-dpi receipt printer
+
+let logoRaster: Promise<Raster | null> | null = null;
+
+/** The ScanDish logo as black-and-white dots for thermal printers (made once, then reused). */
+function receiptLogo(): Promise<Raster | null> {
+  logoRaster ??= (async () => {
+    const img = new Image();
+    img.src = LOGO_URL;
+    await img.decode();
+    const size = LOGO_DOTS;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    const px = ctx.getImageData(0, 0, size, size).data;
+    const rowBytes = size / 8;
+    const data = new Uint8Array(rowBytes * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        // The coral logo becomes black; the white background stays paper.
+        const light = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+        if (light < 215) data[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+      }
+    }
+    return { width: size, height: size, data };
+  })().catch(() => null);
+  return logoRaster;
+}
+
+const bytesFor = async (j: PrintPayload) =>
+  escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, { address: j.address, logo: j.ticket === "kitchen" ? null : await receiptLogo() });
 
 function checkAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException("Printing cancelled", "AbortError");
@@ -152,7 +191,7 @@ async function bluetoothConnection(device: BtDevice): Promise<PrinterConnection>
   return {
     kind: "bluetooth",
     name: device.name || "Bluetooth printer",
-    print: (job, signal) => write(bytesFor(job), signal),
+    print: async (job, signal) => write(await bytesFor(job), signal),
     disconnect: async () => device.gatt?.disconnect(),
   };
 }
@@ -187,7 +226,7 @@ async function usbConnection(device: UsbDevice): Promise<PrinterConnection> {
     kind: "usb",
     name: [device.manufacturerName, device.productName].filter(Boolean).join(" ") || "USB printer",
     print: async (job, signal) => {
-      const data = bytesFor(job);
+      const data = await bytesFor(job);
       // Sent in pieces so a cancel stops between them.
       for (let i = 0; i < data.length; i += 4096) {
         checkAborted(signal);
@@ -214,7 +253,7 @@ async function serialConnection(port: SerialPortLike, label: string): Promise<Pr
     name: label,
     print: async (job, signal) => {
       if (!port.writable) throw new Error("The printer is not connected.");
-      const data = bytesFor(job);
+      const data = await bytesFor(job);
       const writer = port.writable.getWriter();
       try {
         for (let i = 0; i < data.length; i += 512) {
@@ -283,7 +322,8 @@ function printHtml(html: string, signal?: AbortSignal): Promise<void> {
 const systemConnection: PrinterConnection = {
   kind: "system",
   name: "Printer installed on this computer",
-  print: (j, signal) => printHtml(htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket), signal),
+  print: (j, signal) =>
+    printHtml(htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, { address: j.address, logoUrl: `${window.location.origin}${LOGO_URL}` }), signal),
   disconnect: async () => {},
 };
 
