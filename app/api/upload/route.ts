@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError, bearerToken, requireUser } from "@/lib/server/auth";
+import { LockedError, SignedOutError, accessFor } from "@/lib/server/dashboard-security";
 import { logActivity } from "@/lib/server/activity";
 import { destroyImages, uploadBuffer } from "@/lib/server/cloudinary";
 import { certificateFolder } from "@/lib/server/certificates";
@@ -44,6 +45,8 @@ export async function POST(req: Request) {
     if ((isContract && !isAdmin) || (isCertificate && !isAdmin && user.support !== true)) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
+    // Restaurant owners' photo uploads follow the Security Center (signed-out devices, Secure Dashboard PIN).
+    if (!isAdmin && user.support !== true) await accessFor(user, { protect: true });
 
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: `File is too large (max ${MAX_BYTES / MB} MB)` }, { status: 413 });
@@ -100,6 +103,12 @@ export async function POST(req: Request) {
     if (isCertificate) return NextResponse.json({ id: `${result.public_id}.${result.format}` });
     return NextResponse.json(isPrivate ? { id: result.public_id } : { url: result.secure_url });
   } catch (error) {
+    if (error instanceof SignedOutError) {
+      return NextResponse.json({ error: error.message, code: "signed_out" }, { status: 401 });
+    }
+    if (error instanceof LockedError) {
+      return NextResponse.json({ error: error.message, code: "locked" }, { status: 423 });
+    }
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }

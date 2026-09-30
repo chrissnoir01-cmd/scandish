@@ -89,7 +89,7 @@ export async function placeOrder(raw: unknown, meta: { device: string }): Promis
   const items: OrderLine[] = [];
   for (const l of req.lines) {
     const found = byKey.get(l.id || `${l.category}::${l.name}`) ?? byKey.get(`${l.category}::${l.name}`);
-    if (!found || !found.item.available) {
+    if (!found || !found.item.available || found.item.hidden) {
       missing.push(l.name || "a dish");
       continue;
     }
@@ -169,12 +169,13 @@ export async function listOrders(uid: string): Promise<Order[]> {
   return snap.docs.map((d) => toOrder(d.id, d.data()));
 }
 
-export async function setOrderStatus(uid: string, orderId: string, status: OrderStatus): Promise<void> {
+export async function setOrderStatus(uid: string, orderId: string, status: OrderStatus): Promise<number> {
   if (!ORDER_STATUSES.includes(status)) throw new ValidationError("Unknown status");
   const ref = ordersCol(uid).doc(String(orderId).slice(0, 64));
   const snap = await ref.get();
   if (!snap.exists) throw new ValidationError("Order not found");
   await ref.update({ status, statusAt: new Date().toISOString() });
+  return Number(snap.get("number")) || 0;
 }
 
 /**

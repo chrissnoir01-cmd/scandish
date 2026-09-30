@@ -6,6 +6,8 @@ export interface MenuItem {
   image: string;
   available: boolean;
   featured: boolean;
+  /** Hidden from the public menu (kept in the dashboard); switched with the Hide / Unhide button. */
+  hidden?: boolean;
 }
 
 export interface MenuCategory {
@@ -88,6 +90,37 @@ export interface DashboardData extends RestaurantContent {
   premiumDueAt: string;
   /** The restaurant is accepting table orders (Premium only). */
   ordersOpen: boolean;
+  /** Security Center state for this device (filled by the dashboard action). */
+  security?: SecurityState;
+}
+
+/** Security Center state for the device using the dashboard (Premium). */
+export interface SecurityState {
+  premium: boolean;
+  /** A Secure Dashboard PIN exists. */
+  pinSet: boolean;
+  /** Epoch ms until which this device is unlocked (0 = locked, or no PIN). */
+  unlockedUntil: number;
+  sessionId: string;
+  device: string;
+}
+
+export interface DeviceSession {
+  id: string;
+  device: string;
+  deviceType: "mobile" | "tablet" | "desktop";
+  createdAt: string;
+  lastActiveAt: string;
+  current: boolean;
+}
+
+export interface SecurityLogEntry {
+  id: string;
+  action: string;
+  detail: string;
+  device: string;
+  email: string;
+  createdAt: string;
 }
 
 export interface Company {
@@ -277,4 +310,5 @@ export interface Analytics {
 
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  /** code "locked": ask for the Secure Dashboard PIN and retry; "signed_out": this device was signed out. */
+  | { ok: false; error: string; code?: "locked" | "signed_out" };

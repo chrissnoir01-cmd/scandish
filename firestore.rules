@@ -3,8 +3,8 @@ rules_version = '2';
 // All data access goes through the Next.js server (Firebase Admin SDK),
 // which bypasses these rules and checks permissions in code.
 // Browsers only use Firebase Authentication, so they get no direct database access —
-// with one exception: a restaurant owner may read (never write) their own table orders,
-// so new orders appear on the dashboard the moment they are placed.
+// with two exceptions: a restaurant owner may read (never write) their own table orders and
+// their devices' sign-in sessions, so new orders and remote sign-outs show up instantly.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
@@ -12,6 +12,11 @@ service cloud.firestore {
     }
 
     match /restaurants/{restaurantId}/orders/{orderId} {
+      allow read: if request.auth != null && request.auth.uid == restaurantId;
+    }
+
+    // Security Center: a device learns at once when the owner signs it out.
+    match /restaurants/{restaurantId}/sessions/{sessionId} {
       allow read: if request.auth != null && request.auth.uid == restaurantId;
     }
   }

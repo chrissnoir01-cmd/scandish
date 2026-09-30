@@ -5,6 +5,7 @@ import { adminDb } from "./firebase-admin";
 import { normalizeDesign } from "../design";
 import { premiumPending } from "../premium";
 import { daysRemaining, inTrial, isPubliclyVisible } from "../subscription";
+import { ValidationError } from "./validate";
 import type {
   CompanyStatus,
   DashboardData,
@@ -68,6 +69,7 @@ export function toContent(d: Doc): RestaurantContent {
           image: s(i.image),
           available: i.available !== false,
           featured: i.featured === true,
+          hidden: i.hidden === true,
         })),
       })
     ),
@@ -101,8 +103,13 @@ async function loadPublicRestaurant(slug: string): Promise<PublicRestaurant | nu
   }
 
   const template = TEMPLATES.includes(data.premiumTemplate) ? data.premiumTemplate : "default";
+  const content = toContent(data);
+  // Hidden dishes stay in the dashboard only; categories left empty disappear from the page.
+  content.menu = content.menu
+    .map((c) => ({ ...c, items: c.items.filter((i) => !i.hidden) }))
+    .filter((c) => c.items.length > 0);
   return {
-    ...toContent(data),
+    ...content,
     slug,
     plan: toPlan(data.plan),
     premiumEnabled: data.premiumEnabled === true,
@@ -221,13 +228,23 @@ export function contentImages(c: RestaurantContent): string[] {
 export async function saveRestaurantContent(
   uid: string,
   content: RestaurantContent
-): Promise<{ slug: string; name: string; changes: string[]; imagesDeleted: number }> {
+): Promise<{ slug: string; name: string; changes: string[]; dishChanges: string[]; imagesDeleted: number }> {
   const ref = adminDb().collection("restaurants").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Restaurant not found");
 
   const before = toContent(snap.data() as Doc);
+  // Hide / Unhide is its own instant switch; publishing never changes it.
+  const hiddenBefore = new Map(before.menu.flatMap((c) => c.items.map((i) => [dishKey(i, c.category), i.hidden === true] as const)));
+  content = {
+    ...content,
+    menu: content.menu.map((c) => ({
+      ...c,
+      items: c.items.map((i) => ({ ...i, hidden: hiddenBefore.get(dishKey(i, c.category)) ?? false })),
+    })),
+  };
   const changes = describeChanges(before, content);
+  const dishChanges = menuChanges(before, content);
   await ref.set({ ...content, updatedAt: new Date().toISOString() }, { merge: true });
   const slug = s(snap.get("slug"));
   revalidateRestaurant(slug);
@@ -241,5 +258,53 @@ export async function saveRestaurantContent(
     .filter((id): id is string => Boolean(id?.startsWith(`scandish/${uid}/`)));
   const imagesDeleted = removed.length ? await destroyImages(removed) : 0;
 
-  return { slug, name: content.name, changes, imagesDeleted };
+  return { slug, name: content.name, changes, dishChanges, imagesDeleted };
+}
+
+const dishKey = (i: { id: string; name: string }, category: string) => i.id || `${category}::${i.name}`;
+
+/** Dish-level changes for the weekly log: added, removed, price changes and edits. */
+export function menuChanges(before: RestaurantContent, after: RestaurantContent): string[] {
+  const flat = (c: RestaurantContent) => new Map(c.menu.flatMap((cat) => cat.items.map((i) => [dishKey(i, cat.category), { ...i, category: cat.category }] as const)));
+  const [a, b] = [flat(before), flat(after)];
+  const out: string[] = [];
+  for (const [k, item] of b) {
+    const old = a.get(k);
+    if (!old) {
+      out.push(`Product added: ${item.name} (${item.price || "no price"})`);
+      continue;
+    }
+    if (old.price !== item.price) out.push(`Price changed: ${item.name} ${old.price || "—"} → ${item.price || "—"}`);
+    const edited = (["name", "description", "image", "category", "available", "featured"] as const).filter((f) => old[f] !== item[f]);
+    if (edited.length) {
+      const what = edited.map((f) => (f === "image" ? "photo" : f === "available" ? (item.available ? "now available" : "marked sold out") : f));
+      out.push(`Product edited: ${item.name} (${what.join(", ")})`);
+    }
+  }
+  for (const [k, item] of a) if (!b.has(k)) out.push(`Product deleted: ${item.name}`);
+  return out;
+}
+
+/** Hide or unhide one dish right away (no publish needed). Returns its name. */
+export async function setMenuItemHidden(uid: string, key: string, hidden: boolean): Promise<{ name: string; slug: string }> {
+  const ref = adminDb().collection("restaurants").doc(uid);
+  const result = await adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new ValidationError("Restaurant not found");
+    const menu = Array.isArray(snap.get("menu")) ? (snap.get("menu") as Doc[]) : [];
+    let found = "";
+    const next = menu.map((c) => ({
+      ...c,
+      items: (Array.isArray(c.items) ? (c.items as Doc[]) : []).map((i) => {
+        if (found || dishKey({ id: s(i.id), name: s(i.name) }, s(c.category)) !== key) return i;
+        found = s(i.name);
+        return { ...i, hidden };
+      }),
+    }));
+    if (!found) throw new ValidationError("That product was not found. Publish your menu first, then try again.");
+    tx.update(ref, { menu: next, updatedAt: new Date().toISOString() });
+    return { name: found, slug: s(snap.get("slug")) };
+  });
+  revalidateRestaurant(result.slug);
+  return result;
 }

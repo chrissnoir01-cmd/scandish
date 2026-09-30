@@ -3,8 +3,9 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, getIdToken, uploadFile } from "../../lib/firebase";
-import { loadAnalytics, loadDashboard, saveDashboard } from "../actions/restaurant";
+import { auth, getIdToken, uploadFile, UploadBlockedError } from "../../lib/firebase";
+import { loadAnalytics, loadDashboard, saveDashboard, setProductHidden } from "../actions/restaurant";
+import { logoutThisDevice } from "../actions/security";
 import { GRACE_DAYS } from "../../lib/subscription";
 import { PREMIUM_BUILD_DAYS } from "../../lib/premium";
 import { subdomainHost, subdomainUrl } from "../../lib/domains";
@@ -13,6 +14,8 @@ import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
 import OrdersPanel from "@/components/dashboard/OrdersPanel";
 import InstallApp from "@/components/dashboard/InstallApp";
+import SecurityCenter from "@/components/dashboard/SecurityCenter";
+import { LockPill, LockedBanner, useSecureDashboard } from "@/components/dashboard/SecureDashboard";
 import { useContact } from "@/components/ContactProvider";
 import { contactTelUrl, contactWhatsAppUrl } from "@/lib/settings";
 import {
@@ -56,6 +59,8 @@ import {
   CircleCheck,
   Globe,
   Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -186,6 +191,18 @@ function TabButton({
   );
 }
 
+/** A section the Secure Dashboard PIN protects: read-only (with an unlock banner) while locked. */
+function Protected({ locked, onUnlock, what, children }: { locked: boolean; onUnlock: () => void; what: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      {locked && <LockedBanner what={what} onUnlock={onUnlock} />}
+      <fieldset disabled={locked} className={`min-w-0 ${locked ? "pointer-events-none select-none opacity-60" : ""}`}>
+        {children}
+      </fieldset>
+    </div>
+  );
+}
+
 // --- MAIN DASHBOARD PAGE ---
 
 export default function DashboardPage() {
@@ -261,6 +278,12 @@ export default function DashboardPage() {
   const [subdomain, setSubdomain] = useState("");
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [newOrders, setNewOrders] = useState(0);
+  const [hiding, setHiding] = useState<string | null>(null);
+  /** Hide / Unhide saves on its own; it must not mark the page as having unpublished changes. */
+  const skipDirty = useRef(false);
+  const secure = useSecureDashboard();
+  const { locked, requestUnlock, whenUnlocked, setSecurity } = secure;
+  const unlockPrompt = () => void requestUnlock("Editing is protected.");
 
   // LOAD / DIRTY STATE
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -293,16 +316,55 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  /** This device was signed out from the Security Center: leave the dashboard. */
+  const handleSignedOut = (message: string) => {
+    try {
+      sessionStorage.setItem("scandish.signedOut", message);
+    } catch {
+      // The login page just won't show why.
+    }
+    void signOut(auth);
+  };
+
   /** Uploads with a spinner key; always clears the spinner and reports failures. */
-  const runUpload = async (key: string, file: File): Promise<string | null> => {
+  const runUpload = async (key: string, file: File, retried = false): Promise<string | null> => {
     setUploading(key);
     try {
       return await uploadFile(file);
     } catch (err) {
+      if (err instanceof UploadBlockedError) {
+        if (err.code === "signed_out") handleSignedOut(err.message);
+        else if (!retried && (await requestUnlock("Uploading photos is protected."))) return runUpload(key, file, true);
+        return null;
+      }
       triggerToast(err instanceof Error ? err.message : "Upload failed", "error");
       return null;
     } finally {
       setUploading(null);
+    }
+  };
+
+  /** Hide / Unhide: saved at once, the public menu updates right away. Allowed without the PIN. */
+  const toggleHidden = async (item: MenuItem, category: string) => {
+    const key = item.id || `${category}::${item.name}`;
+    setHiding(key);
+    try {
+      const res = await setProductHidden(await getIdToken(), key, !item.hidden);
+      if (!res.ok) {
+        if (res.code === "signed_out") return handleSignedOut(res.error);
+        return triggerToast(res.error, "error");
+      }
+      skipDirty.current = true;
+      setMenu((prev) =>
+        prev.map((c) =>
+          c.category !== category ? c : { ...c, items: c.items.map((i) => (i === item || (i.id && i.id === item.id) ? { ...i, hidden: !item.hidden } : i)) }
+        )
+      );
+      triggerToast(item.hidden ? `${item.name} is visible again` : `${item.name} is hidden from the menu`);
+    } catch {
+      triggerToast("Check your connection and try again.", "error");
+    } finally {
+      setHiding(null);
     }
   };
 
@@ -324,6 +386,7 @@ export default function DashboardPage() {
       // View statistics load alongside the page data; the editor opens as soon as its own data arrives.
       const viewsRequest = loadAnalytics(token).catch(() => null);
       const res = await loadDashboard(token);
+      if (!res.ok && res.code === "signed_out") return handleSignedOut(res.error);
       if (!res.ok) {
         setLoadState("error");
         triggerToast(res.error, "error");
@@ -354,6 +417,7 @@ export default function DashboardPage() {
       setGallery(data.gallery);
       setOffers(data.offers);
       setPlan(data.plan);
+      if (data.security) setSecurity(data.security);
       setOrdersOpen(data.ordersOpen);
       // The app's "Track order" shortcut opens /dashboard?tab=orders.
       if (data.plan === "premium" && new URLSearchParams(window.location.search).get("tab") === "orders") setActiveTab("orders");
@@ -370,13 +434,48 @@ export default function DashboardPage() {
       setAnalyticsLoading(false);
     };
     loadData();
-  }, [user]);
+  }, [user, setSecurity]);
+
+  // Signed out from the Security Center on another device: leave within seconds.
+  useEffect(() => {
+    const { premium, sessionId } = secure.security;
+    const uid = user?.uid;
+    if (!premium || !sessionId || !uid) return;
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [{ db }, fs] = await Promise.all([import("@/lib/firebase-db"), import("firebase/firestore")]);
+        if (cancelled) return;
+        stop = fs.onSnapshot(
+          fs.doc(db, "restaurants", uid, "sessions", sessionId),
+          (snap) => {
+            if (snap.get("revoked") === true) handleSignedOut("This device was signed out by the account owner.");
+          },
+          () => {
+            // Live check unavailable; the server still refuses this device's next action.
+          }
+        );
+      } catch {
+        // Same as above.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSignedOut only signs out
+  }, [secure.security.premium, secure.security.sessionId, user?.uid]);
 
   // Any edit after the initial load marks the page as unpublished.
   useEffect(() => {
     if (loadState !== "ready") return;
     if (!loaded.current) {
       loaded.current = true;
+      return;
+    }
+    if (skipDirty.current) {
+      skipDirty.current = false;
       return;
     }
     setDirty(true);
@@ -445,6 +544,7 @@ export default function DashboardPage() {
       image: mImg,
       available: mAvailable,
       featured: mFeatured,
+      hidden: menu.flatMap((c) => c.items).find((i) => i.id === editingItemId)?.hidden ?? false,
     };
 
     const updatedMenu = menu.map((cat) => ({
@@ -579,9 +679,10 @@ export default function DashboardPage() {
 
   // --- SAVE & PUBLISH ---
 
-  const handleSave = async () => {
+  const handleSave = async (retried = false): Promise<void> => {
     if (!user || loadState !== "ready") return;
     if (!name.trim()) return triggerToast("Business name is required", "error");
+    if (locked && !(await requestUnlock("Publishing changes is protected."))) return;
     setSaving(true);
     try {
       const res = await saveDashboard(await getIdToken(), {
@@ -590,6 +691,12 @@ export default function DashboardPage() {
         theme: { primaryColor, secondaryColor, backgroundColor },
         menu, gallery, offers,
       });
+      if (!res.ok && res.code === "signed_out") return handleSignedOut(res.error);
+      if (!res.ok && res.code === "locked") {
+        setSaving(false);
+        if (!retried && (await requestUnlock("Publishing changes is protected."))) return handleSave(true);
+        return;
+      }
       if (!res.ok) return triggerToast(res.error, "error");
       setDirty(false);
       triggerToast("Changes published live!");
@@ -707,7 +814,10 @@ export default function DashboardPage() {
             <a href={supportWhatsApp} target="_blank" rel="noreferrer" className="rounded-2xl bg-[#f08c6c] px-5 py-3 text-sm font-bold text-white">
               Contact support
             </a>
-            <button onClick={() => signOut(auth)} className="rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-500">
+            <button onClick={async () => {
+                await logoutThisDevice(await getIdToken()).catch(() => null);
+                await signOut(auth);
+              }} className="rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-500">
               Logout
             </button>
           </div>
@@ -742,11 +852,14 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3">
             <InstallApp />
+            {secure.security.premium && secure.security.pinSet && (
+              <LockPill locked={locked} onUnlock={unlockPrompt} onLock={() => void secure.lockNow()} />
+            )}
             {dirty && (
               <span className="hidden text-xs font-bold text-orange-500 sm:inline">Unpublished changes</span>
             )}
             <button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
               disabled={saving || uploading !== null}
               className="flex items-center gap-2 rounded-2xl bg-[#f08c6c] px-6 py-2.5 font-bold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50"
             >
@@ -856,13 +969,16 @@ export default function DashboardPage() {
             <TabButton id="account" label="Security" emoji="🔐" activeTab={activeTab} setActiveTab={setActiveTab} />
           </nav>
           
-          <button onClick={() => signOut(auth)} className="flex w-full items-center justify-center gap-2 rounded-3xl border border-red-50 py-4 font-bold text-red-500 transition-all hover:bg-red-50">
+          <button onClick={async () => {
+                await logoutThisDevice(await getIdToken()).catch(() => null);
+                await signOut(auth);
+              }} className="flex w-full items-center justify-center gap-2 rounded-3xl border border-red-50 py-4 font-bold text-red-500 transition-all hover:bg-red-50">
             <LogOut size={18} /> Logout
           </button>
         </aside>
 
         {/* MAIN CONTENT AREA */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Stays mounted on every tab so orders keep arriving and printing. */}
           {plan === "premium" && (
             <OrdersPanel
@@ -879,6 +995,7 @@ export default function DashboardPage() {
           )}
 
           {activeTab === "general" && (
+            <Protected locked={locked} onUnlock={unlockPrompt} what="Business details can only be changed with the Secure Dashboard PIN.">
             <div className="space-y-6">
               <SectionCard title="Identity" icon={Settings}>
                 <div className="space-y-4">
@@ -948,9 +1065,11 @@ export default function DashboardPage() {
                 </div>
               </SectionCard>
             </div>
+            </Protected>
           )}
 
           {activeTab === "branding" && (
+            <Protected locked={locked} onUnlock={unlockPrompt} what="Colours, logo and cover can only be changed with the Secure Dashboard PIN.">
             <div className="space-y-6">
               <SectionCard title="Visual Brand" icon={ImageIcon}>
                 <div className="grid gap-6 md:grid-cols-2">
@@ -983,10 +1102,12 @@ export default function DashboardPage() {
                 </div>
               </SectionCard>
             </div>
+            </Protected>
           )}
 
           {activeTab === "menu" && (
             <div className="space-y-6">
+              <Protected locked={locked} onUnlock={unlockPrompt} what="Adding and editing products, prices and photos needs the Secure Dashboard PIN. You can still hide or unhide products below.">
               <SectionCard title={editingItemId ? "Update Menu Item" : "New Menu Item"} icon={Plus}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
@@ -1072,6 +1193,7 @@ export default function DashboardPage() {
                   )}
                 </div>
               </SectionCard>
+              </Protected>
 
               {/* MENU LIST */}
               <div className="space-y-6">
@@ -1079,19 +1201,39 @@ export default function DashboardPage() {
                   <div className="relative flex-1">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
-                      placeholder="Search menu items..."
+                      type="search"
+                      aria-label="Search products"
+                      placeholder="Search products by name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full rounded-2xl border border-[#f4d4ca] bg-white py-3 pl-12 pr-4 outline-none focus:ring-2 focus:ring-[#f08c6c]/20"
+                      className="w-full rounded-2xl border border-[#f4d4ca] bg-white py-3 pl-12 pr-10 outline-none focus:ring-2 focus:ring-[#f08c6c]/20"
                     />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        aria-label="Clear search"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-gray-400 hover:bg-gray-100"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
                   </div>
                   <button
-                    onClick={() => setShowCatManager(true)}
+                    onClick={() => void whenUnlocked(() => setShowCatManager(true), "Managing categories is protected.")}
                     className="flex items-center gap-2 rounded-xl border border-[#f4d4ca] bg-white px-4 py-3 text-sm font-bold text-[#f08c6c]"
                   >
                     <Settings size={16} /> Manage Categories
                   </button>
                 </div>
+
+                {searchQuery.trim() && (
+                  <p className="px-2 text-sm font-medium text-gray-500">
+                    {filteredMenu.reduce((n, c) => n + c.items.length, 0) === 0
+                      ? `No product matches “${searchQuery.trim()}”.`
+                      : `${filteredMenu.reduce((n, c) => n + c.items.length, 0)} product${filteredMenu.reduce((n, c) => n + c.items.length, 0) > 1 ? "s" : ""} found`}
+                  </p>
+                )}
 
                 {filteredMenu.map((cat) => (
                   <div key={cat.category} className="space-y-3">
@@ -1102,11 +1244,16 @@ export default function DashboardPage() {
                       {cat.items.map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-center gap-4 rounded-3xl border bg-white p-4 transition-all ${
-                            item.available ? "border-[#f4d4ca]" : "opacity-60 grayscale border-gray-200"
+                          className={`flex flex-col gap-3 rounded-3xl border p-4 transition-all ${
+                            item.hidden
+                              ? "border-dashed border-gray-300 bg-gray-50"
+                              : item.available
+                                ? "border-[#f4d4ca] bg-white"
+                                : "opacity-60 grayscale border-gray-200 bg-white"
                           }`}
                         >
-                          <div className="h-14 w-14 overflow-hidden rounded-xl bg-gray-50">
+                          <div className="flex items-center gap-4">
+                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-gray-50">
                             {item.image ? (
                               <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
                             ) : (
@@ -1117,21 +1264,45 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className="truncate font-bold">{item.name}</p>
+                              <p className={`truncate font-bold ${item.hidden ? "text-gray-400" : ""}`}>{item.name}</p>
                               {item.featured && <Star size={12} className="fill-orange-400 text-orange-400" />}
+                              {item.hidden && (
+                                <span className="shrink-0 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-black uppercase text-gray-500">Hidden</span>
+                              )}
                             </div>
                             <p className="text-sm font-black text-[#f08c6c]">{item.price}</p>
                           </div>
-                          <div className="flex gap-1">
+                          </div>
+                          <div className="flex items-center gap-1 border-t border-gray-100 pt-3">
                             <button
-                              onClick={() => handleEditItem(item, cat.category)}
+                              onClick={() => void toggleHidden(item, cat.category)}
+                              disabled={hiding === (item.id || `${cat.category}::${item.name}`)}
+                              title={item.hidden ? "Show this product on the public menu again" : "Hide this product from the public menu (it stays here)"}
+                              className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-bold transition-colors disabled:opacity-50 ${
+                                item.hidden ? "bg-gray-900 text-white hover:bg-black" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                              }`}
+                            >
+                              {hiding === (item.id || `${cat.category}::${item.name}`) ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : item.hidden ? (
+                                <Eye size={16} />
+                              ) : (
+                                <EyeOff size={16} />
+                              )}
+                              {item.hidden ? "Unhide" : "Hide"}
+                            </button>
+                            <span className="flex-1" />
+                            <button
+                              onClick={() => void whenUnlocked(() => handleEditItem(item, cat.category), "Editing products is protected.")}
                               className="rounded-lg p-2 text-gray-400 hover:text-[#f08c6c]"
+                              aria-label={`Edit ${item.name}`}
                             >
                               <Edit3 size={18} />
                             </button>
                             <button
-                              onClick={() => setItemToDelete({ id: item.id, name: item.name })}
+                              onClick={() => void whenUnlocked(() => setItemToDelete({ id: item.id, name: item.name }), "Deleting products is protected.")}
                               className="rounded-lg p-2 text-gray-400 hover:text-red-500"
+                              aria-label={`Delete ${item.name}`}
                             >
                               <Trash2 size={18} />
                             </button>
@@ -1146,6 +1317,7 @@ export default function DashboardPage() {
           )}
 
           {activeTab === "gallery" && (
+            <Protected locked={locked} onUnlock={unlockPrompt} what="Gallery photos can only be changed with the Secure Dashboard PIN.">
             <SectionCard title="Public Gallery" icon={ImageIcon}>
               <div className="space-y-6">
                 <div className="relative flex h-32 flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-[#f4d4ca] bg-gray-50 transition-all hover:bg-gray-100">
@@ -1179,9 +1351,11 @@ export default function DashboardPage() {
                 </div>
               </div>
             </SectionCard>
+            </Protected>
           )}
 
           {activeTab === "offers" && (
+            <Protected locked={locked} onUnlock={unlockPrompt} what="Offers can only be changed with the Secure Dashboard PIN.">
             <SectionCard title="Perks & Features" icon={Tag}>
               <div className="space-y-6">
                 <div className="flex gap-2">
@@ -1219,6 +1393,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             </SectionCard>
+            </Protected>
           )}
 
           {activeTab === "account" && (
@@ -1281,6 +1456,23 @@ export default function DashboardPage() {
                   </form>
                 </div>
               </SectionCard>
+
+              {secure.security.premium ? (
+                <SecurityCenter
+                  security={secure.security}
+                  locked={locked}
+                  onSecurity={secure.setSecurity}
+                  requestUnlock={requestUnlock}
+                  notify={triggerToast}
+                />
+              ) : (
+                <div className="rounded-3xl border border-dashed border-[#f4d4ca] bg-white p-6 text-sm text-gray-500">
+                  <p className="font-bold text-gray-900">Security Center — Premium</p>
+                  <p className="mt-1">
+                    Premium adds a Secure Dashboard PIN for staff, a list of signed-in devices with remote sign-out, and a weekly activity log.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1297,7 +1489,7 @@ export default function DashboardPage() {
                  </div>
                  <h3 className="text-xl font-black mb-1">{name || "Your Restaurant"}</h3>
                  <p className="text-xs font-medium text-white/50 mb-4 italic">
-                    {daysRemaining !== null ? `${daysRemaining} days remaining` : "Premium Plan"}
+                    {daysRemaining !== null ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining` : "Premium Plan"}
                  </p>
                  <a
                    href={`${supportWhatsApp}?text=${encodeURIComponent(`Hello ScanDish, I would like to renew the subscription for ${name}.`)}`}
@@ -1363,6 +1555,8 @@ export default function DashboardPage() {
       </div>
 
       {/* MODALS */}
+      {secure.dialog}
+
       {itemToDelete && (
         <Modal title="Confirm Item Removal" onClose={() => setItemToDelete(null)}>
           <div className="space-y-6">

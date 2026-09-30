@@ -69,6 +69,7 @@ function menuItem(value: unknown): MenuItem {
     image: imageUrl(v.image, `Photo of "${name}"`),
     available: v.available !== false,
     featured: v.featured === true,
+    hidden: v.hidden === true,
   };
 }
 

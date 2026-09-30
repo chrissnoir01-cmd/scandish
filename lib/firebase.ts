@@ -39,6 +39,13 @@ export async function uploadPrivateAsset(file: File, purpose: "contract-stamp" |
   return data.id as string;
 }
 
+/** An upload refused by the Security Center: `code` is "locked" (PIN needed) or "signed_out". */
+export class UploadBlockedError extends Error {
+  constructor(message: string, readonly code: "locked" | "signed_out") {
+    super(message);
+  }
+}
+
 export async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", await prepareUpload(file));
@@ -48,6 +55,7 @@ export async function uploadFile(file: File): Promise<string> {
     body: formData,
   });
   const data = await res.json().catch(() => ({}));
+  if (data.code === "locked" || data.code === "signed_out") throw new UploadBlockedError(data.error, data.code);
   if (!res.ok) throw new Error(data.error || "Upload failed");
   return data.url as string;
 }

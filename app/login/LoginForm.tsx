@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -38,6 +38,20 @@ export default function LoginForm({
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Signed out remotely from the Security Center: say why.
+  useEffect(() => {
+    try {
+      const reason = sessionStorage.getItem("scandish.signedOut");
+      if (reason) {
+        sessionStorage.removeItem("scandish.signedOut");
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- the reason is only in this browser
+        setErrorMessage(reason);
+      }
+    } catch {
+      // Nothing to show.
+    }
+  }, []);
 
   const forgotHref = email ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : "/forgot-password";
 
