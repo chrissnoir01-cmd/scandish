@@ -90,6 +90,8 @@ export interface DashboardData extends RestaurantContent {
   premiumDueAt: string;
   /** The restaurant is accepting table orders (Premium only). */
   ordersOpen: boolean;
+  /** Payment details printed on receipts as a QR code (empty code = none). */
+  receiptPayment: ReceiptPayment;
   /** Security Center state for this device (filled by the dashboard action). */
   security?: SecurityState;
 }
@@ -313,3 +315,13 @@ export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   /** code "locked": ask for the Secure Dashboard PIN and retry; "signed_out": this device was signed out. */
   | { ok: false; error: string; code?: "locked" | "signed_out" };
+
+/** How guests pay, printed at the foot of receipts (e.g. MTN MoMo pay code). */
+export interface ReceiptPayment {
+  /** e.g. "Pay with MTN MoMo". */
+  label: string;
+  /** USSD or pay code, e.g. "*182*8*1*123456#". Empty = no payment block. */
+  code: string;
+  /** Name the payment goes to, so guests can check it, e.g. "KIZA RESTAURANT LTD". */
+  name: string;
+}

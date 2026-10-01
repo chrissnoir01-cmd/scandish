@@ -20,9 +20,13 @@ import {
   CookingPot,
   Ban,
   BellRing,
+  Wallet,
 } from "lucide-react";
 import { auth, getIdToken } from "@/lib/firebase";
-import { claimPrint, loadOrders, releasePrint, updateOrderStatus, updateOrdersOpen } from "@/app/actions/orders";
+import { claimPrint, loadOrders, releasePrint, updateOrderStatus, updateOrdersOpen, updateReceiptPayment } from "@/app/actions/orders";
+import { QRCodeSVG } from "qrcode.react";
+import { paymentQrValue } from "@/lib/printing/receipt";
+import type { ReceiptPayment } from "@/lib/types";
 import { ORDER_LIMITS, STATUS_LABEL, formatAmount, toOrder, type Order, type OrderStatus } from "@/lib/orders";
 import { orderTime, type PaperWidth, type TicketKind } from "@/lib/printing/receipt";
 import { JOB_LABEL, PrintQueue, isActive, type PrintJob } from "@/lib/printing/queue";
@@ -143,6 +147,9 @@ type Filter = "active" | "done" | "all";
 export default function OrdersPanel({
   restaurantName,
   pageAddress,
+  payment,
+  onPaymentChange,
+  requestUnlock,
   initialOpen,
   visible,
   onNewCount,
@@ -151,6 +158,11 @@ export default function OrdersPanel({
   restaurantName: string;
   /** The restaurant's web address, printed at the foot of receipts. */
   pageAddress: string;
+  /** Payment details printed on receipts (QR code + USSD code). */
+  payment: ReceiptPayment;
+  onPaymentChange: (p: ReceiptPayment) => void;
+  /** Asks for the Secure Dashboard PIN; resolves true once unlocked. */
+  requestUnlock: (reason?: string) => Promise<boolean>;
   initialOpen: boolean;
   visible: boolean;
   onNewCount: (n: number) => void;
@@ -188,6 +200,8 @@ export default function OrdersPanel({
   /** Status changes made here, shown until the server confirms them (an older update can't undo them). */
   const pendingStatus = useRef(new Map<string, { status: OrderStatus; until: number }>());
   const station = useRef("station");
+  /** Bumped on Cancel: a connection that finishes afterwards is ignored. */
+  const connectAttempt = useRef(0);
 
   /* ----- Printer settings and reconnect ----- */
 
@@ -198,10 +212,16 @@ export default function OrdersPanel({
     setSettings(s);
     setSupport(printerSupport());
     if (s.saved) {
+      const attempt = ++connectAttempt.current;
       setConnecting("reconnect");
       reconnectPrinter(s.saved)
-        .then((c) => setPrinter(c))
-        .finally(() => setConnecting(null));
+        .then((c) => {
+          if (attempt === connectAttempt.current) setPrinter(c);
+          else void c?.disconnect();
+        })
+        .finally(() => {
+          if (attempt === connectAttempt.current) setConnecting(null);
+        });
     }
   }, []);
 
@@ -391,7 +411,10 @@ export default function OrdersPanel({
         run: async (signal) => {
           const target = opts.via ?? (await connectPrinter("system")).connection;
           for (const ticket of tickets) {
-            await target.print({ order, restaurant: restaurantName, width: settings.width, reprint: opts.reprint, ticket, address: pageAddress }, signal);
+            await target.print(
+              { order, restaurant: restaurantName, width: settings.width, reprint: opts.reprint, ticket, address: pageAddress, payment, ownWindow: !opts.auto },
+              signal
+            );
           }
         },
         after: async (status) => {
@@ -407,7 +430,7 @@ export default function OrdersPanel({
         },
       });
     },
-    [queue, restaurantName, pageAddress, settings.width, notify]
+    [queue, restaurantName, pageAddress, payment, settings.width, notify]
   );
 
   // Auto-print: every new, unprinted order gets one automatic attempt on this device.
@@ -429,35 +452,75 @@ export default function OrdersPanel({
   };
 
   const connect = async (kind: PrinterKind) => {
+    const attempt = ++connectAttempt.current;
     setConnecting(kind);
     try {
       const { connection, saved } = await connectPrinter(kind);
+      if (attempt !== connectAttempt.current) {
+        void connection.disconnect();
+        return;
+      }
       await printer?.disconnect().catch(() => {});
       setPrinter(connection);
       saveSettings({ ...settings, saved });
       notify(`${connection.name} connected`);
     } catch (err) {
       const msg = printerError(err);
-      if (msg) notify(msg, "error");
+      if (msg && attempt === connectAttempt.current) notify(msg, "error");
     } finally {
-      setConnecting(null);
+      if (attempt === connectAttempt.current) setConnecting(null);
     }
   };
 
   const reconnect = async () => {
     if (!settings.saved) return;
+    // Bluetooth needs the chooser, and browsers only allow it straight after the tap.
+    if (settings.saved.kind === "bluetooth" || settings.saved.kind === "system") return connect(settings.saved.kind);
+    const attempt = ++connectAttempt.current;
     setConnecting("reconnect");
     try {
       const c = await reconnectPrinter(settings.saved);
+      if (attempt !== connectAttempt.current) {
+        void c?.disconnect();
+        return;
+      }
       if (c) {
         setPrinter(c);
         notify(`${c.name} connected`);
       } else {
-        // Bluetooth printers need the chooser again after a reload.
-        await connect(settings.saved.kind);
+        notify("The printer didn't answer. Check it's on and plugged in, then press Reconnect again.", "error");
       }
     } finally {
-      setConnecting(null);
+      if (attempt === connectAttempt.current) setConnecting(null);
+    }
+  };
+
+  /** Stops waiting for a printer that doesn't answer. */
+  const cancelConnect = () => {
+    connectAttempt.current++;
+    setConnecting(null);
+  };
+
+  /* ----- Payment on receipts ----- */
+
+  const [editingPayment, setEditingPayment] = useState(false);
+
+  const savePayment = async (next: ReceiptPayment, retried = false): Promise<boolean> => {
+    try {
+      const res = await updateReceiptPayment(await getIdToken(), next);
+      if (!res.ok && res.code === "locked" && !retried) {
+        return (await requestUnlock("Payment details are protected.")) ? savePayment(next, true) : false;
+      }
+      if (!res.ok) {
+        notify(res.error, "error");
+        return false;
+      }
+      onPaymentChange(res.data);
+      notify(res.data.code ? "Payment details saved — they print on every receipt" : "Payment details removed from receipts");
+      return true;
+    } catch {
+      notify("Check your connection and try again.", "error");
+      return false;
     }
   };
 
@@ -642,6 +705,15 @@ export default function OrdersPanel({
                 {connecting === "reconnect" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Reconnect {settings.saved.name}
               </button>
             )}
+            {connecting !== null && (
+              <div className="mt-5 flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                <span className="flex-1">{connecting === "reconnect" ? "Reconnecting to your printer…" : "Connecting to the printer…"}</span>
+                <button type="button" onClick={cancelConnect} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100">
+                  Cancel
+                </button>
+              </div>
+            )}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {printerChoices.map(({ kind, label, hint, Icon }) => (
                 <button
@@ -695,7 +767,16 @@ export default function OrdersPanel({
           <button type="button" onClick={() => setShowHelp((v) => !v)} className="font-bold text-[#d9694a] underline-offset-2 hover:underline">
             {showHelp ? "Hide printer help" : "Printer help"}
           </button>
+          <button
+            type="button"
+            onClick={() => setEditingPayment((v) => !v)}
+            className="flex items-center gap-1.5 rounded-xl border border-[#f4d4ca] px-3 py-1.5 font-bold text-[#d9694a] hover:bg-[#fff8f5]"
+          >
+            <Wallet className="h-4 w-4" /> {payment.code ? "Payment on receipt: on" : "Add payment to receipt"}
+          </button>
         </div>
+
+        {editingPayment && <PaymentEditor payment={payment} onSave={savePayment} onClose={() => setEditingPayment(false)} />}
 
         {showHelp && (
           <div className="mt-4 space-y-3 rounded-2xl bg-gray-50 p-5 text-sm leading-relaxed text-gray-600">
@@ -968,5 +1049,96 @@ function OrderCard({
         )}
       </div>
     </li>
+  );
+}
+
+/** MoMo (or any) pay code printed on receipts: a QR code that opens the phone dialler, with the code below. */
+function PaymentEditor({
+  payment,
+  onSave,
+  onClose,
+}: {
+  payment: ReceiptPayment;
+  onSave: (p: ReceiptPayment) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(payment.label || "Pay with MTN MoMo");
+  const [code, setCode] = useState(payment.code);
+  const [name, setName] = useState(payment.name);
+  const [busy, setBusy] = useState(false);
+  const clean = code.replace(/\s+/g, "");
+  const valid = /^[0-9*#+]{3,40}$/.test(clean);
+
+  const save = async (next: ReceiptPayment) => {
+    setBusy(true);
+    if (await onSave(next)) onClose();
+    setBusy(false);
+  };
+
+  return (
+    <div className="mt-4 rounded-2xl border border-[#f4d4ca] bg-[#fffaf8] p-5">
+      <p className="font-bold text-gray-900">Payment on receipts</p>
+      <p className="mt-1 text-sm text-gray-500">
+        Type the code guests dial to pay you (MTN MoMo pay code, Airtel Money or any USSD code). Every receipt then ends with a QR code for it
+        instead of the ScanDish logo — scanning it opens the phone dialler with the code ready — and the code written below.
+      </p>
+      <div className="mt-4 grid gap-5 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-3">
+          <label className="block text-sm font-semibold text-gray-700">
+            Title
+            <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={40} className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-normal" />
+          </label>
+          <label className="block text-sm font-semibold text-gray-700">
+            USSD / pay code
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              inputMode="tel"
+              placeholder="*182*8*1*123456#"
+              maxLength={44}
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-mono text-base font-normal"
+            />
+          </label>
+          <label className="block text-sm font-semibold text-gray-700">
+            Account name (optional — guests check they pay the right place)
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="KIZA RESTAURANT LTD" className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-normal" />
+          </label>
+          {clean && !valid && <p className="text-sm font-medium text-red-600">Use only digits, * and # — for example *182*8*1*123456#</p>}
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-2xl bg-white p-4 text-center">
+          {valid ? (
+            <>
+              <QRCodeSVG value={paymentQrValue(clean)} size={132} marginSize={1} />
+              <p className="mt-2 font-mono text-sm font-bold">{clean}</p>
+              <p className="text-[11px] text-gray-400">Receipt preview</p>
+            </>
+          ) : (
+            <p className="w-32 text-xs text-gray-400">The QR code appears here</p>
+          )}
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy || !valid}
+          onClick={() => void save({ label: label.trim(), code: clean, name: name.trim() })}
+          className="flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+        >
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />} Save
+        </button>
+        {payment.code && (
+          <button type="button" disabled={busy} onClick={() => void save({ label: "", code: "", name: "" })} className="rounded-xl px-4 py-2.5 text-sm font-bold text-gray-500 hover:bg-red-50 hover:text-red-600">
+            Remove from receipts
+          </button>
+        )}
+        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-bold text-gray-500 hover:bg-gray-100">
+          Close
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        Changing this needs the Secure Dashboard PIN (when one is set). Android phones open the dialler from the QR code; on iPhone, guests type the
+        code shown under it.
+      </p>
+    </div>
   );
 }

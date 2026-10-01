@@ -14,6 +14,7 @@ import type {
   Plan,
   PremiumTemplate,
   PublicRestaurant,
+  ReceiptPayment,
   RestaurantContent,
 } from "../types";
 
@@ -184,7 +185,25 @@ export async function getDashboardData(uid: string): Promise<DashboardData | nul
     premiumPending: premiumPending(data),
     premiumDueAt: premiumPending(data) ? premiumDueAt : "",
     ordersOpen: toPlan(data.plan) === "premium" && data.ordersOpen === true,
+    receiptPayment: toReceiptPayment(data.receiptPayment),
   };
+}
+
+export function toReceiptPayment(v: unknown): ReceiptPayment {
+  const d = (v && typeof v === "object" ? v : {}) as Doc;
+  return { label: s(d.label), code: s(d.code), name: s(d.name) };
+}
+
+/** Saves the payment details printed on receipts (validated here; the action checks the PIN). */
+export async function saveReceiptPayment(uid: string, input: unknown): Promise<ReceiptPayment> {
+  const d = (input && typeof input === "object" ? input : {}) as Doc;
+  const code = s(d.code).replace(/\s+/g, "");
+  if (code && !/^[0-9*#+]{3,40}$/.test(code)) throw new ValidationError("The payment code can only contain digits, * and # (for example *182*8*1*123456#).");
+  const label = s(d.label).trim().slice(0, 40) || (code ? "Pay with Mobile Money" : "");
+  const name = s(d.name).trim().slice(0, 60);
+  const payment = code ? { label, code, name } : { label: "", code: "", name: "" };
+  await adminDb().collection("restaurants").doc(uid).update({ receiptPayment: payment });
+  return payment;
 }
 
 const SECTION_LABELS: Record<keyof RestaurantContent, string> = {

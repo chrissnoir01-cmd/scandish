@@ -9,7 +9,7 @@ import { logoutThisDevice } from "../actions/security";
 import { GRACE_DAYS } from "../../lib/subscription";
 import { PREMIUM_BUILD_DAYS } from "../../lib/premium";
 import { ROOT_DOMAIN, subdomainHost, subdomainUrl } from "../../lib/domains";
-import type { Analytics, MenuCategory, MenuItem, Offer } from "../../lib/types";
+import type { Analytics, MenuCategory, MenuItem, Offer, ReceiptPayment } from "../../lib/types";
 import { InsightsPanel, ViewsCard } from "@/components/dashboard/Insights";
 import FirstLoginGate from "@/components/dashboard/FirstLoginGate";
 import OrdersPanel from "@/components/dashboard/OrdersPanel";
@@ -274,6 +274,7 @@ export default function DashboardPage() {
   const [premiumBuild, setPremiumBuild] = useState<{ dueAt: string } | null>(null);
   const [subdomain, setSubdomain] = useState("");
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [receiptPayment, setReceiptPayment] = useState<ReceiptPayment>({ label: "", code: "", name: "" });
   const [newOrders, setNewOrders] = useState(0);
   const [hiding, setHiding] = useState<string | null>(null);
   /** Hide / Unhide saves on its own; it must not mark the page as having unpublished changes. */
@@ -434,6 +435,7 @@ export default function DashboardPage() {
       setPlan(data.plan);
       if (data.security) setSecurity(data.security);
       setOrdersOpen(data.ordersOpen);
+      setReceiptPayment(data.receiptPayment);
       // The app's "Track order" shortcut opens /dashboard?tab=orders.
       if (data.plan === "premium" && new URLSearchParams(window.location.search).get("tab") === "orders") setActiveTab("orders");
       setDaysRemaining(data.subscription?.daysRemaining ?? null);
@@ -986,6 +988,9 @@ export default function DashboardPage() {
             <OrdersPanel
               restaurantName={name}
               pageAddress={subdomain ? subdomainHost(subdomain) : `${ROOT_DOMAIN}/r/${slug}`}
+              payment={receiptPayment}
+              onPaymentChange={setReceiptPayment}
+              requestUnlock={requestUnlock}
               initialOpen={ordersOpen}
               visible={activeTab === "orders"}
               onNewCount={setNewOrders}

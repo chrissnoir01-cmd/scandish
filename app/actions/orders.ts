@@ -4,8 +4,9 @@ import { dashboardAccess, securityLog } from "@/lib/server/dashboard-security";
 import { logActivity } from "@/lib/server/activity";
 import { claimOrderPrint, listOrders, pruneOldOrders, releaseOrderPrint, setOrderStatus, setOrdersOpen } from "@/lib/server/orders";
 import { fail } from "@/lib/server/result";
+import { saveReceiptPayment } from "@/lib/server/restaurants";
 import { STATUS_LABEL, type Order, type OrderStatus } from "@/lib/orders";
-import type { ActionResult } from "@/lib/types";
+import type { ActionResult, ReceiptPayment } from "@/lib/types";
 
 /** Switches "Accepting orders" on or off; the menu page shows or hides its order button right away. */
 export async function updateOrdersOpen(idToken: string, open: boolean): Promise<ActionResult> {
@@ -66,5 +67,17 @@ export async function releasePrint(idToken: string, orderId: string): Promise<Ac
     return { ok: true, data: undefined };
   } catch (err) {
     return fail(err, "Could not update the order");
+  }
+}
+
+/** Payment details printed on receipts. A money destination, so it needs the Secure Dashboard PIN. */
+export async function updateReceiptPayment(idToken: string, input: unknown): Promise<ActionResult<ReceiptPayment>> {
+  try {
+    const access = await dashboardAccess(idToken, { protect: true });
+    const payment = await saveReceiptPayment(access.user.uid, input);
+    await securityLog(access, "Receipt payment details changed", payment.code ? `${payment.label} · ${payment.code}${payment.name ? ` · ${payment.name}` : ""}` : "Removed");
+    return { ok: true, data: payment };
+  } catch (err) {
+    return fail(err, "Could not save the payment details");
   }
 }

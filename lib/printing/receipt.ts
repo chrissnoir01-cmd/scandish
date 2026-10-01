@@ -25,7 +25,16 @@ export interface ReceiptFooter {
   logo?: Raster | null;
   /** ScanDish logo URL for printers installed on the computer. */
   logoUrl?: string;
+  /** How to pay: shown as a QR code (instead of the logo) with the code written below. */
+  payment?: { label: string; code: string; name: string };
+  /** The payment QR code for thermal printers. */
+  paymentQr?: Raster | null;
+  /** The payment QR code as SVG, for printers installed on the computer. */
+  paymentQrSvg?: string;
 }
+
+/** What the payment QR code opens: the phone's dialler with the USSD code ready (# must be escaped). */
+export const paymentQrValue = (code: string) => `tel:${code.replace(/#/g, "%23")}`;
 
 /** Characters per line in the printer's standard font. */
 const COLUMNS: Record<PaperWidth, number> = { 58: 32, 80: 48 };
@@ -34,6 +43,7 @@ type Line =
   | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean }
   | { kind: "rule" }
   | { kind: "logo" }
+  | { kind: "qr" }
   | { kind: "pair"; left: string; right: string; bold?: boolean };
 
 export function orderTime(iso: string): string {
@@ -97,7 +107,17 @@ function layout(order: Order, restaurant: string, reprint: boolean, ticket: Tick
     lines.push({ kind: "text", text: "Order again or see our menu:", align: "center" });
     lines.push({ kind: "text", text: footer.address, align: "center", bold: true });
   }
-  lines.push({ kind: "logo" });
+  if (footer.payment?.code) {
+    // Pay here: the QR code replaces the ScanDish logo.
+    lines.push({ kind: "rule" });
+    lines.push({ kind: "text", text: footer.payment.label || "Pay with Mobile Money", align: "center", bold: true });
+    lines.push({ kind: "qr" });
+    lines.push({ kind: "text", text: footer.payment.code, align: "center", bold: true, big: true });
+    if (footer.payment.name) lines.push({ kind: "text", text: footer.payment.name, align: "center" });
+    lines.push({ kind: "text", text: `Amount: ${formatAmount(order.total)} ${order.currency}`, align: "center", bold: true });
+  } else {
+    lines.push({ kind: "logo" });
+  }
   lines.push({ kind: "text", text: "Powered by ScanDish", align: "center" });
   return lines;
 }
@@ -157,8 +177,8 @@ export function escposReceipt(
 
   push(ESC, 0x40); // reset
   for (const line of layout(order, restaurant, reprint, ticket, footer)) {
-    if (line.kind === "logo") {
-      const logo = footer.logo;
+    if (line.kind === "logo" || line.kind === "qr") {
+      const logo = line.kind === "qr" ? footer.paymentQr : footer.logo;
       if (!logo) continue;
       // GS v 0: print a raster image, centred.
       const rowBytes = Math.ceil(logo.width / 8);
@@ -215,6 +235,7 @@ export function htmlReceipt(
     .map((l) => {
       if (l.kind === "rule") return `<hr>`;
       if (l.kind === "logo") return footer.logoUrl ? `<div class="c logo"><img src="${esc(footer.logoUrl)}" alt="ScanDish"></div>` : "";
+      if (l.kind === "qr") return footer.paymentQrSvg ? `<div class="c qr">${footer.paymentQrSvg}</div>` : "";
       if (l.kind === "pair") return `<div class="pair${l.bold ? " b" : ""}"><span>${esc(l.left)}</span><span>${esc(l.right)}</span></div>`;
       return `<div class="${[l.align === "center" ? "c" : "", l.bold ? "b" : "", l.big ? "big" : ""].join(" ")}">${esc(l.text)}</div>`;
     })
@@ -227,6 +248,7 @@ body{width:${printable}mm;margin:0 auto;padding:2mm 0 6mm;font:12px/1.35 "Courie
 .c{text-align:center}.b{font-weight:700}.big{font-size:17px;line-height:1.25}
 hr{border:0;border-top:1px dashed #000;margin:4px 0}
 .pair{display:flex;justify-content:space-between;gap:8px}.pair span:last-child{white-space:nowrap}
+.qr{margin:4px 0}.qr svg{width:32mm;height:32mm}
 .logo{margin-top:6px}.logo img{width:18mm;height:auto;filter:grayscale(1) brightness(0.6) contrast(10)}
 </style></head><body>${rows}</body></html>`;
 }

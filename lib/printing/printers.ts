@@ -9,7 +9,11 @@
  * The first three print silently. "system" prints silently when Chrome runs with --kiosk-printing.
  */
 
-import { escposReceipt, htmlReceipt, type PaperWidth, type Raster, type TicketKind } from "./receipt";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QRCodeSVG } from "qrcode.react";
+import { escposReceipt, htmlReceipt, paymentQrValue, type PaperWidth, type Raster, type ReceiptFooter, type TicketKind } from "./receipt";
+import type { ReceiptPayment } from "../types";
 import type { Order } from "../orders";
 
 export type PrinterKind = "bluetooth" | "usb" | "serial" | "system";
@@ -23,6 +27,10 @@ export interface PrintPayload {
   ticket?: TicketKind;
   /** The restaurant's web address, printed at the foot of receipts. */
   address?: string;
+  /** How to pay: printed as a QR code with the code written below (instead of the ScanDish logo). */
+  payment?: ReceiptPayment;
+  /** Printers installed on the computer: open the print window separately (after a tap), so the dashboard stays usable. */
+  ownWindow?: boolean;
 }
 
 export interface PrinterConnection {
@@ -36,41 +44,87 @@ export interface PrinterConnection {
 const LOGO_URL = "/app/icon-192.png";
 const LOGO_DOTS = 160; // about 20 mm wide on a 203-dpi receipt printer
 
+/** Draws an image into black-and-white dots (dark → black, light → paper). */
+async function toRaster(src: string, size: number): Promise<Raster | null> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, size, size);
+  const px = ctx.getImageData(0, 0, size, size).data;
+  const rowBytes = size / 8;
+  const data = new Uint8Array(rowBytes * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      // The coral logo and the QR modules become black; white stays paper.
+      const light = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      if (light < 215) data[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  return { width: size, height: size, data };
+}
+
 let logoRaster: Promise<Raster | null> | null = null;
 
-/** The ScanDish logo as black-and-white dots for thermal printers (made once, then reused). */
+/** The ScanDish logo for thermal printers (made once, then reused). */
 function receiptLogo(): Promise<Raster | null> {
-  logoRaster ??= (async () => {
-    const img = new Image();
-    img.src = LOGO_URL;
-    await img.decode();
-    const size = LOGO_DOTS;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, size, size);
-    ctx.drawImage(img, 0, 0, size, size);
-    const px = ctx.getImageData(0, 0, size, size).data;
-    const rowBytes = size / 8;
-    const data = new Uint8Array(rowBytes * size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        // The coral logo becomes black; the white background stays paper.
-        const light = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-        if (light < 215) data[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
-      }
-    }
-    return { width: size, height: size, data };
-  })().catch(() => null);
+  logoRaster ??= toRaster(LOGO_URL, LOGO_DOTS).catch(() => null);
   return logoRaster;
 }
 
-const bytesFor = async (j: PrintPayload) =>
-  escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, { address: j.address, logo: j.ticket === "kitchen" ? null : await receiptLogo() });
+const QR_DOTS = 256; // about 32 mm, easy for any phone camera
+const qrCache = new Map<string, { svg: string; raster: Promise<Raster | null> }>();
+
+/** The payment QR code (opens the phone dialler with the USSD code), as SVG and as printer dots. */
+function paymentQr(code: string) {
+  let hit = qrCache.get(code);
+  if (!hit) {
+    const svg = renderToStaticMarkup(createElement(QRCodeSVG, { value: paymentQrValue(code), size: QR_DOTS, level: "M", marginSize: 2 }));
+    const raster = toRaster(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, QR_DOTS).catch(() => null);
+    hit = { svg, raster };
+    qrCache.set(code, hit);
+  }
+  return hit;
+}
+
+async function footerFor(j: PrintPayload, forHtml: boolean): Promise<ReceiptFooter> {
+  if (j.ticket === "kitchen") return {};
+  const payment = j.payment?.code ? j.payment : undefined;
+  if (payment) {
+    const qr = paymentQr(payment.code);
+    return forHtml ? { address: j.address, payment, paymentQrSvg: qr.svg } : { address: j.address, payment, paymentQr: await qr.raster };
+  }
+  return forHtml ? { address: j.address, logoUrl: `${window.location.origin}${LOGO_URL}` } : { address: j.address, logo: await receiptLogo() };
+}
+
+const bytesFor = async (j: PrintPayload) => escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, await footerFor(j, false));
+
+/** Gives up on a printer that doesn't answer, instead of waiting forever. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+const NO_ANSWER = "The printer didn't answer. Check it's switched on and nearby, then try again.";
 
 function checkAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException("Printing cancelled", "AbortError");
@@ -319,11 +373,35 @@ function printHtml(html: string, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * Opens the receipt in its own small window, which prints itself and closes. The print window then
+ * belongs to that window, so the dashboard keeps working. Only possible right after a tap (browsers
+ * block pop-ups otherwise); returns false when it couldn't open.
+ */
+function printInWindow(html: string): boolean {
+  // Browsers allow a new window only right after a tap. Without a way to check that, use the page instead.
+  const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+  if (!activation?.isActive) return false;
+  const page = html.replace(
+    "</body>",
+    `<script>addEventListener("load",function(){setTimeout(function(){print();setTimeout(function(){close()},300)},150)});</script></body>`
+  );
+  const url = URL.createObjectURL(new Blob([page], { type: "text/html" }));
+  const win = window.open(url, "_blank", "noopener,popup,width=420,height=640");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // "noopener" makes the browser return null even when the window opened (it's allowed right after a tap).
+  void win;
+  return true;
+}
+
 const systemConnection: PrinterConnection = {
   kind: "system",
   name: "Printer installed on this computer",
-  print: (j, signal) =>
-    printHtml(htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, { address: j.address, logoUrl: `${window.location.origin}${LOGO_URL}` }), signal),
+  print: async (j, signal) => {
+    const html = htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, await footerFor(j, true));
+    if (j.ownWindow && printInWindow(html)) return;
+    await printHtml(html, signal);
+  },
   disconnect: async () => {},
 };
 
@@ -337,23 +415,28 @@ export async function connectPrinter(kind: PrinterKind): Promise<{ connection: P
   if (kind === "bluetooth") {
     if (!a.bluetooth) throw new Error(UNSUPPORTED);
     const device = await a.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BT_SERVICES });
-    const connection = await bluetoothConnection(device);
+    const connection = await withTimeout(bluetoothConnection(device), 15_000, NO_ANSWER);
     return { connection, saved: { kind, name: connection.name, ref: device.id } };
   }
   if (kind === "usb") {
     if (!a.usb) throw new Error(UNSUPPORTED);
     const device = await a.usb.requestDevice({ filters: [] });
-    const connection = await usbConnection(device);
+    const connection = await withTimeout(usbConnection(device), 15_000, NO_ANSWER);
     return { connection, saved: { kind, name: connection.name, ref: `${device.vendorId}:${device.productId}` } };
   }
   if (!a.serial) throw new Error(UNSUPPORTED);
   const port = await a.serial.requestPort();
-  const connection = await serialConnection(port, "Printer on COM port");
+  const connection = await withTimeout(serialConnection(port, "Printer on COM port"), 15_000, NO_ANSWER);
   return { connection, saved: { kind, name: connection.name, ref: serialRef(port) } };
 }
 
 /** Reconnects to the printer chosen before, without asking (browser permission is remembered). null if not possible. */
 export async function reconnectPrinter(saved: SavedPrinter): Promise<PrinterConnection | null> {
+  // A printer that is off must not keep the dashboard "connecting" forever.
+  return withTimeout(reconnectNow(saved), 8_000, NO_ANSWER).catch(() => null);
+}
+
+async function reconnectNow(saved: SavedPrinter): Promise<PrinterConnection | null> {
   const a = apis();
   try {
     if (saved.kind === "system") return systemConnection;
