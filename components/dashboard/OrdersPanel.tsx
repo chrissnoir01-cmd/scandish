@@ -23,7 +23,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { auth, getIdToken } from "@/lib/firebase";
-import { claimPrint, loadOrders, releasePrint, updateOrderStatus, updateOrdersOpen, updateReceiptPayment } from "@/app/actions/orders";
+import { claimPrint, loadOrders, pruneOrders, releasePrint, updateOrderStatus, updateOrdersOpen, updateReceiptPayment } from "@/app/actions/orders";
 import { QRCodeSVG } from "qrcode.react";
 import { paymentQrValue } from "@/lib/printing/receipt";
 import type { ReceiptPayment } from "@/lib/types";
@@ -315,8 +315,8 @@ export default function OrdersPanel({
     let unsubscribe: (() => void) | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
 
-    const fetchOnce = async (prune = false) => {
-      const res = await loadOrders(await getIdToken(), prune);
+    const fetchOnce = async () => {
+      const res = await loadOrders(await getIdToken());
       if (!cancelled && res.ok) receive(res.data);
     };
     const onVisible = () => {
@@ -325,12 +325,18 @@ export default function OrdersPanel({
     const startPolling = () => {
       if (poll || cancelled) return;
       setLive("polling");
-      poll = setInterval(() => void fetchOnce().catch(() => {}), 10_000);
+      void fetchOnce().catch(() => {});
+      poll = setInterval(() => void fetchOnce().catch(() => {}), 15_000);
       document.addEventListener("visibilitychange", onVisible);
     };
 
+    // Old orders (30+ days) are removed in the background; the list itself comes from the live connection
+    // (one read per order), and the server is asked directly only if live updates are unavailable.
+    void getIdToken()
+      .then((t) => pruneOrders(t))
+      .catch(() => {});
+
     (async () => {
-      await fetchOnce(true).catch(() => {});
       const uid = auth.currentUser?.uid;
       if (!uid || cancelled) return startPolling();
       try {

@@ -114,36 +114,59 @@ export async function placeOrder(raw: unknown, meta: { device: string }): Promis
   const { day } = kigaliParts(now);
   const ref = req.ref ? ordersCol(uid).doc(`g_${req.ref}`) : ordersCol(uid).doc();
 
-  // The subscription check, the daily counter and any earlier copy of this order are read together.
-  const number = await db.runTransaction(async (tx) => {
-    const [counter, companySnap, existing] = await tx.getAll(counterDoc(uid), db.collection("companies").doc(companyId), ref);
-    // Sent twice (double tap or retry): it's the same order.
-    if (existing.exists) return Number(existing.get("number")) || 0;
-    const company = companySnap.data();
-    if (!isPubliclyVisible({ status: company?.status as CompanyStatus, subscriptionEnd: s(company?.subscriptionEnd), trialEndsAt: s(company?.trialEndsAt) })) {
-      throw new OrderClosedError(closed);
+  // Checks first (outside the numbering step), so the shared counter is held as briefly as possible.
+  const [companySnap, existing] = await db.getAll(db.collection("companies").doc(companyId), ref);
+  // Sent twice (double tap or retry): it's the same order.
+  if (existing.exists) return { id: ref.id, number: Number(existing.get("number")) || 0, restaurant: content.name };
+  const company = companySnap.data();
+  if (!isPubliclyVisible({ status: company?.status as CompanyStatus, subscriptionEnd: s(company?.subscriptionEnd), trialEndsAt: s(company?.trialEndsAt) })) {
+    throw new OrderClosedError(closed);
+  }
+
+  const order = {
+    day,
+    items,
+    total: Math.round(total * 100) / 100,
+    currency: menuCurrency(content.menu),
+    hasUnpriced: items.some((l) => l.unitPrice === null),
+    table: req.table,
+    phone: req.phone,
+    note: req.note,
+    status: "new",
+    createdAt: now.toISOString(),
+    printedAt: "",
+    printedBy: "",
+    device: meta.device,
+  };
+
+  // Numbering: every order of a restaurant takes the next number from one counter. When many arrive
+  // together they take turns (short waits and retries) instead of failing.
+  let number = 0;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      number = await db.runTransaction(
+        async (tx) => {
+          const counter = await tx.get(counterDoc(uid));
+          const n = counter.get("day") === day ? Number(counter.get("n")) || 0 : 0;
+          if (n >= MAX_ORDERS_PER_DAY) throw new OrderClosedError(closed);
+          tx.set(counterDoc(uid), { day, n: n + 1 });
+          // "create" refuses a second copy of the same order, even if two retries race.
+          tx.create(ref, { ...order, number: n + 1 });
+          return n + 1;
+        },
+        { maxAttempts: 10 }
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: number }).code;
+      if (code === 6 /* ALREADY_EXISTS: the same order got in first */) {
+        number = Number((await ref.get()).get("number")) || 0;
+        break;
+      }
+      if (code !== 10 /* ABORTED: counter busy */ || attempt >= 12) throw err;
+      await new Promise((r) => setTimeout(r, 50 + Math.random() * 250 * attempt));
     }
-    const n = counter.get("day") === day ? Number(counter.get("n")) || 0 : 0;
-    if (n >= MAX_ORDERS_PER_DAY) throw new OrderClosedError(closed);
-    tx.set(counterDoc(uid), { day, n: n + 1 });
-    tx.set(ref, {
-      number: n + 1,
-      day,
-      items,
-      total: Math.round(total * 100) / 100,
-      currency: menuCurrency(content.menu),
-      hasUnpriced: items.some((l) => l.unitPrice === null),
-      table: req.table,
-      phone: req.phone,
-      note: req.note,
-      status: "new",
-      createdAt: now.toISOString(),
-      printedAt: "",
-      printedBy: "",
-      device: meta.device,
-    });
-    return n + 1;
-  });
+  }
 
   return { id: ref.id, number, restaurant: content.name };
 }

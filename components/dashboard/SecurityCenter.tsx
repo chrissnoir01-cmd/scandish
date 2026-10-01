@@ -70,14 +70,15 @@ export default function SecurityCenter({
     notifyRef.current = notify;
   });
 
-  const load = useCallback(async () => {
+  /** Devices always; the weekly log (the larger read) only when asked for. */
+  const load = useCallback(async (withLog = true) => {
     setLoading(true);
     try {
       const token = await getIdToken();
-      const [d, l] = await Promise.all([loadDevices(token), loadWeeklyLog(token)]);
+      const [d, l] = await Promise.all([loadDevices(token), withLog ? loadWeeklyLog(token) : Promise.resolve(null)]);
       if (d.ok) setDevices(d.data);
-      if (l.ok) setLog(l.data);
-      const failed = !d.ok ? d : !l.ok ? l : null;
+      if (l?.ok) setLog(l.data);
+      const failed = !d.ok ? d : l && !l.ok ? l : null;
       if (failed && failed.code !== "locked") notifyRef.current(failed.error, "error");
     } finally {
       setLoading(false);
@@ -88,10 +89,10 @@ export default function SecurityCenter({
     if (locked) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loads when the device may see them
     void load();
-    // Devices and the log refresh by themselves while this screen is open.
+    // The device list refreshes by itself while this screen is open; the log on Refresh.
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 60_000);
+      if (document.visibilityState === "visible") void load(false);
+    }, 120_000);
     return () => clearInterval(timer);
   }, [locked, load]);
 

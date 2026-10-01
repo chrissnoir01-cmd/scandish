@@ -1,4 +1,5 @@
-import { recordView, type ViewSource } from "@/lib/server/analytics";
+import { after } from "next/server";
+import { queueView, type ViewSource } from "@/lib/server/analytics";
 import { deviceFromUserAgent } from "@/lib/server/request";
 
 const SLUG = /^[a-z0-9-]{1,80}$/;
@@ -34,7 +35,9 @@ export async function POST(req: Request) {
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
     if (throttled(`${ip}|${ua}|${slug}`)) return done;
 
-    await recordView(slug, { source, unique: body?.unique === true, device: deviceFromUserAgent(ua) });
+    // Saved in a batch after the answer is sent: the guest's page never waits for the database.
+    const view = { source, unique: body?.unique === true, device: deviceFromUserAgent(ua) };
+    after(() => queueView(slug, view));
   } catch (err) {
     console.error("track failed", err);
   }

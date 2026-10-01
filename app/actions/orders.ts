@@ -28,11 +28,10 @@ export async function updateOrdersOpen(idToken: string, open: boolean): Promise<
   }
 }
 
-/** Latest orders (used when opening Track order, and as a fallback when live updates are unavailable). */
-export async function loadOrders(idToken: string, prune = false): Promise<ActionResult<Order[]>> {
+/** Latest orders, when live updates are unavailable. */
+export async function loadOrders(idToken: string): Promise<ActionResult<Order[]>> {
   try {
     const { user } = await dashboardAccess(idToken);
-    if (prune) await pruneOldOrders(user.uid).catch((err) => console.error("order prune failed", err));
     return { ok: true, data: await listOrders(user.uid) };
   } catch (err) {
     return fail(err, "Could not load orders");
@@ -79,5 +78,15 @@ export async function updateReceiptPayment(idToken: string, input: unknown): Pro
     return { ok: true, data: payment };
   } catch (err) {
     return fail(err, "Could not save the payment details");
+  }
+}
+
+/** Removes orders older than the keep period (run when Track order opens). */
+export async function pruneOrders(idToken: string): Promise<ActionResult<number>> {
+  try {
+    const { user } = await dashboardAccess(idToken);
+    return { ok: true, data: await pruneOldOrders(user.uid) };
+  } catch (err) {
+    return fail(err, "Could not tidy old orders");
   }
 }
