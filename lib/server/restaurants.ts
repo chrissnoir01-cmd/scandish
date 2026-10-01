@@ -118,6 +118,7 @@ async function loadPublicRestaurant(slug: string): Promise<PublicRestaurant | nu
     design: template === "studio" && data.design ? normalizeDesign(data.design) : null,
     subdomain: s(data.subdomain),
     ordering: toPlan(data.plan) === "premium" && data.ordersOpen === true,
+    payment: toReceiptPayment(data.receiptPayment),
   };
 }
 
@@ -202,7 +203,10 @@ export async function saveReceiptPayment(uid: string, input: unknown): Promise<R
   const label = s(d.label).trim().slice(0, 40) || (code ? "Pay with Mobile Money" : "");
   const name = s(d.name).trim().slice(0, 60);
   const payment = code ? { label, code, name } : { label: "", code: "", name: "" };
-  await adminDb().collection("restaurants").doc(uid).update({ receiptPayment: payment });
+  const ref = adminDb().collection("restaurants").doc(uid);
+  await ref.update({ receiptPayment: payment });
+  // Guests see the payment details after ordering, so the menu page refreshes.
+  revalidateRestaurant(s((await ref.get()).get("slug")));
   return payment;
 }
 

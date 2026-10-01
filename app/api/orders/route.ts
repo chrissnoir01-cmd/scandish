@@ -35,7 +35,8 @@ export async function POST(req: Request) {
 
   try {
     const order = await placeOrder(body, { device: deviceFromUserAgent(ua) });
-    return NextResponse.json({ number: order.number });
+    // The total comes from the server (menu prices), so the payment screen shows the real amount.
+    return NextResponse.json({ number: order.number, total: order.total, currency: order.currency, hasUnpriced: order.hasUnpriced });
   } catch (err) {
     if (err instanceof OrderClosedError) return NextResponse.json({ error: err.message, closed: true }, { status: 409 });
     if (err instanceof ValidationError) return NextResponse.json({ error: err.message }, { status: 400 });

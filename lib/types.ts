@@ -66,6 +66,8 @@ export interface PublicRestaurant extends RestaurantContent {
   subdomain: string;
   /** Premium table ordering is switched on: guests can send orders from the menu. */
   ordering: boolean;
+  /** How guests pay (shown after they send an order); empty code = not set. */
+  payment: ReceiptPayment;
 }
 
 export interface Subscription {

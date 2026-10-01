@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { Check, Copy, Loader2, Minus, Phone, Plus, ShoppingBag, Trash2, Wallet, X } from "lucide-react";
 import { ORDER_LIMITS, formatAmount, itemKey, menuCurrency, normalizeGuestPhone, parsePrice } from "@/lib/orders";
-import type { MenuItem, PublicRestaurant } from "@/lib/types";
+import { paymentQrValue as paymentDialLink } from "@/lib/printing/receipt";
+import type { MenuItem, PublicRestaurant, ReceiptPayment } from "@/lib/types";
 
 interface CartLine {
   key: string;
@@ -185,6 +186,7 @@ function ActiveOrdering({
       {sheetOpen && (
         <OrderSheet
           slug={restaurant.slug}
+          payment={restaurant.payment}
           name={restaurant.name}
           cart={cart}
           currency={currency}
@@ -225,6 +227,7 @@ function ActiveOrdering({
 
 function OrderSheet({
   slug,
+  payment,
   name,
   cart,
   currency,
@@ -237,6 +240,7 @@ function OrderSheet({
   onClosedByRestaurant,
 }: {
   slug: string;
+  payment: ReceiptPayment | undefined;
   name: string;
   cart: CartLine[];
   currency: string;
@@ -254,7 +258,7 @@ function OrderSheet({
   const [website, setWebsite] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [sent, setSent] = useState<{ number: number; table: string } | null>(null);
+  const [sent, setSent] = useState<{ number: number; table: string; total: number; currency: string; hasUnpriced: boolean } | null>(null);
   /** Same code for every retry of this order, so a lost connection can't create it twice. */
   const sendRef = useRef("");
   // A changed order is a new order.
@@ -322,7 +326,7 @@ function OrderSheet({
       } catch {
         // Not remembered.
       }
-      setSent({ number: data.number, table: t });
+      setSent({ number: data.number, table: t, total: Number(data.total) || 0, currency: data.currency || "RWF", hasUnpriced: data.hasUnpriced === true });
       sendRef.current = "";
       setNote("");
       onSent();
@@ -364,11 +368,12 @@ function OrderSheet({
             <p className="mt-2 text-neutral-600">
               The restaurant has received your order{sent.table ? ` for table ${sent.table}` : ""}. Please keep this number.
             </p>
+            {payment?.code && <PayNow payment={payment} total={sent.total} currency={sent.currency} hasUnpriced={sent.hasUnpriced} accent={accent} accentText={accentText} />}
             <button
               type="button"
               onClick={onClose}
-              className="mt-7 w-full rounded-2xl py-3.5 font-bold"
-              style={{ backgroundColor: accent, color: accentText }}
+              className={`mt-6 w-full rounded-2xl py-3.5 font-bold ${payment?.code ? "border border-neutral-200 text-neutral-700" : ""}`}
+              style={payment?.code ? undefined : { backgroundColor: accent, color: accentText }}
             >
               Back to the menu
             </button>
@@ -543,5 +548,127 @@ export function AddToOrder({ item, category, className = "" }: { item: MenuItem;
     <span className={className}>
       <Stepper qty={qty} onMinus={() => change(item, category, -1)} onPlus={() => change(item, category, 1)} accent={accent} accentText={accentText} small />
     </span>
+  );
+}
+
+/* ---------- Paying after ordering ---------- */
+
+/** iPhones and iPads refuse to dial codes with * or # from a web page, so they copy the code instead. */
+const isApple = () =>
+  typeof navigator !== "undefined" && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers: copy through a temporary text box.
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.setAttribute("readonly", "");
+    box.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    return ok;
+  }
+}
+
+/** Pay button on the confirmation: dial the pay code (Android) or copy it (iPhone), with the amount to pay. */
+function PayNow({
+  payment,
+  total,
+  currency,
+  hasUnpriced,
+  accent,
+  accentText,
+}: {
+  payment: ReceiptPayment;
+  total: number;
+  currency: string;
+  hasUnpriced: boolean;
+  accent: string;
+  accentText: string;
+}) {
+  const [copied, setCopied] = useState<"code" | "amount" | null>(null);
+  const [apple, setApple] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the device type is only known in the browser
+    setApple(isApple());
+  }, []);
+  const amount = formatAmount(total);
+
+  const copy = async (what: "code" | "amount") => {
+    if (await copyText(what === "code" ? payment.code : String(total))) {
+      setCopied(what);
+      setTimeout(() => setCopied((c) => (c === what ? null : c)), 4000);
+    }
+  };
+
+  return (
+    <div className="mt-6 w-full rounded-2xl border border-neutral-200 p-4 text-left">
+      <p className="flex items-center gap-2 font-bold">
+        <Wallet className="h-5 w-5" style={{ color: accent }} /> Pay for your order
+      </p>
+      <p className="mt-0.5 text-sm text-neutral-500">
+        {payment.label}
+        {payment.name ? ` · ${payment.name}` : ""}
+      </p>
+
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-neutral-50 px-3.5 py-2.5">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Amount to pay</p>
+          <p className="text-lg font-black">
+            {amount} {currency}
+          </p>
+          {hasUnpriced && <p className="text-[11px] text-neutral-500">+ items priced at the counter</p>}
+        </div>
+        <button type="button" onClick={() => void copy("amount")} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-bold">
+          {copied === "amount" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />} {copied === "amount" ? "Copied" : "Copy amount"}
+        </button>
+      </div>
+
+      {/* The code gets a full line on phones, so it is never cut or split in the middle. */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl bg-neutral-50 px-3.5 py-2.5">
+        <div className="min-w-0 basis-full sm:basis-auto">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Pay code</p>
+          <p className="break-all font-mono text-[17px] font-black leading-snug">{payment.code}</p>
+        </div>
+        <button type="button" onClick={() => void copy("code")} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-bold">
+          {copied === "code" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />} {copied === "code" ? "Copied" : "Copy code"}
+        </button>
+      </div>
+
+      {apple ? (
+        <>
+          <button
+            type="button"
+            onClick={() => void copy("code")}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-bold"
+            style={{ backgroundColor: accent, color: accentText }}
+          >
+            <Copy className="h-5 w-5" /> Copy code to pay
+          </button>
+          <p className="mt-2 text-center text-xs text-neutral-500">
+            {copied === "code" ? "Code copied — open your Phone app, paste it and press call. " : "iPhones can't dial pay codes from a web page. "}
+            When asked, enter {amount} {currency}.
+          </p>
+        </>
+      ) : (
+        <>
+          <a
+            href={paymentDialLink(payment.code)}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-bold"
+            style={{ backgroundColor: accent, color: accentText }}
+          >
+            <Phone className="h-5 w-5" /> Dial to pay
+          </a>
+          <p className="mt-2 text-center text-xs text-neutral-500">
+            Opens your phone with the code ready. When asked, enter {amount} {currency}.
+          </p>
+        </>
+      )}
+    </div>
   );
 }

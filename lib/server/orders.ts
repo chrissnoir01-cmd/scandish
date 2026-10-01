@@ -68,7 +68,10 @@ function parseRequest(raw: unknown) {
  * Records a guest's order. Prices, names and availability come from the stored menu, never from the phone.
  * Throws OrderClosedError when the restaurant isn't taking orders.
  */
-export async function placeOrder(raw: unknown, meta: { device: string }): Promise<{ id: string; number: number; restaurant: string }> {
+export async function placeOrder(
+  raw: unknown,
+  meta: { device: string }
+): Promise<{ id: string; number: number; restaurant: string; total: number; currency: string; hasUnpriced: boolean }> {
   const req = parseRequest(raw);
   const db = adminDb();
 
@@ -117,7 +120,16 @@ export async function placeOrder(raw: unknown, meta: { device: string }): Promis
   // Checks first (outside the numbering step), so the shared counter is held as briefly as possible.
   const [companySnap, existing] = await db.getAll(db.collection("companies").doc(companyId), ref);
   // Sent twice (double tap or retry): it's the same order.
-  if (existing.exists) return { id: ref.id, number: Number(existing.get("number")) || 0, restaurant: content.name };
+  if (existing.exists) {
+    return {
+      id: ref.id,
+      number: Number(existing.get("number")) || 0,
+      restaurant: content.name,
+      total: Number(existing.get("total")) || 0,
+      currency: s(existing.get("currency")) || "RWF",
+      hasUnpriced: existing.get("hasUnpriced") === true,
+    };
+  }
   const company = companySnap.data();
   if (!isPubliclyVisible({ status: company?.status as CompanyStatus, subscriptionEnd: s(company?.subscriptionEnd), trialEndsAt: s(company?.trialEndsAt) })) {
     throw new OrderClosedError(closed);
@@ -168,7 +180,7 @@ export async function placeOrder(raw: unknown, meta: { device: string }): Promis
     }
   }
 
-  return { id: ref.id, number, restaurant: content.name };
+  return { id: ref.id, number, restaurant: content.name, total: order.total, currency: order.currency, hasUnpriced: order.hasUnpriced };
 }
 
 /* ---------- Owner side ---------- */
