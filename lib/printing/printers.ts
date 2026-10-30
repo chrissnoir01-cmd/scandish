@@ -406,25 +406,61 @@ function printHtml(html: string, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Fired on `window` when a print had to run inside the dashboard because pop-ups are blocked. */
+export const POPUP_BLOCKED_EVENT = "scandish:print-popup-blocked";
+
 /**
  * Opens the receipt in its own small window, which prints itself and closes. The print window then
- * belongs to that window, so the dashboard keeps working. Only possible right after a tap (browsers
- * block pop-ups otherwise); returns false when it couldn't open.
+ * belongs to that window, so the dashboard never pauses (printing inside the dashboard freezes it
+ * until the browser's print window is fully gone). Works right after a tap, and for automatic prints
+ * once pop-ups are allowed for the site. Resolves false when the window couldn't open.
+ *
+ * The window is opened without a link back (so it runs separately), and reports over a
+ * BroadcastChannel: "open" → we answer "go" → it prints. It never prints without "go", so a
+ * window that opens late can't print a second copy after we fell back to printing here.
  */
-function printInWindow(html: string): boolean {
-  // Browsers allow a new window only right after a tap. Without a way to check that, use the page instead.
-  const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
-  if (!activation?.isActive) return false;
+function printInWindow(html: string, signal?: AbortSignal): Promise<boolean> {
+  const id = Math.random().toString(36).slice(2);
   const page = html.replace(
     "</body>",
-    `<script>addEventListener("load",function(){setTimeout(function(){print();setTimeout(function(){close()},300)},150)});</script></body>`
+    `<script>(function(){var c=new BroadcastChannel("sd-print"),id=${JSON.stringify(id)},go=false;` +
+      `c.onmessage=function(e){var m=e.data||{};if(m.id!==id)return;` +
+      `if(m.s==="go"&&!go){go=true;setTimeout(function(){print();setTimeout(function(){close()},300)},150)}` +
+      `if(m.s==="stop"&&!go)close()};` +
+      `addEventListener("load",function(){c.postMessage({id:id,s:"open"})});` +
+      `setTimeout(function(){if(!go)close()},10000)})();</script></body>`
   );
   const url = URL.createObjectURL(new Blob([page], { type: "text/html" }));
-  const win = window.open(url, "_blank", "noopener,popup,width=420,height=640");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  // "noopener" makes the browser return null even when the window opened (it's allowed right after a tap).
-  void win;
-  return true;
+  const channel = new BroadcastChannel("sd-print");
+  return new Promise<boolean>((resolve, reject) => {
+    let state: "waiting" | "over" = "waiting";
+    const end = (fn: () => void) => {
+      if (state === "over") return;
+      state = "over";
+      clearTimeout(noWindow);
+      channel.close();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      fn();
+    };
+    // No answer: the browser blocked the window.
+    const noWindow = setTimeout(() => {
+      channel.postMessage({ id, s: "stop" });
+      end(() => resolve(false));
+    }, 3_000);
+    signal?.addEventListener("abort", () => {
+      channel.postMessage({ id, s: "stop" });
+      end(() => reject(new DOMException("Printing cancelled", "AbortError")));
+    });
+    channel.onmessage = (e: MessageEvent<{ id?: string; s?: string }>) => {
+      if (e.data?.id !== id) return;
+      if (e.data.s !== "open" || state !== "waiting") return;
+      channel.postMessage({ id, s: "go" });
+      // Handed over: the print window is now the browser's (and the person's) to finish.
+      end(() => resolve(true));
+    };
+    // "noopener" returns null even when the window opened, hence the messages above.
+    window.open(url, "_blank", "noopener,popup,width=420,height=640");
+  });
 }
 
 const systemConnection: PrinterConnection = {
@@ -433,7 +469,8 @@ const systemConnection: PrinterConnection = {
   print: async (j, signal) => {
     // Every ticket in ONE page: a second print request right after the first would be ignored.
     const html = htmlTickets(j.order, j.restaurant, j.width, Boolean(j.reprint), ticketsOf(j), await footerFor(j, true));
-    if (j.ownWindow && printInWindow(html)) return;
+    if (typeof BroadcastChannel !== "undefined" && (await printInWindow(html, signal))) return;
+    window.dispatchEvent(new Event(POPUP_BLOCKED_EVENT));
     await printHtml(html, signal);
   },
   disconnect: async () => {},

@@ -31,6 +31,7 @@ import { ORDER_LIMITS, STATUS_LABEL, formatAmount, toOrder, type Order, type Ord
 import { orderTime, type PaperWidth, type TicketKind } from "@/lib/printing/receipt";
 import { JOB_LABEL, PrintQueue, isActive, type PrintJob } from "@/lib/printing/queue";
 import {
+  POPUP_BLOCKED_EVENT,
   connectPrinter,
   printerError,
   printerSupport,
@@ -185,6 +186,8 @@ export default function OrdersPanel({
   const jobs = useSyncExternalStore(queue.subscribe, queue.snapshot, queue.snapshot);
   const [support, setSupport] = useState<Record<PrinterKind, boolean>>({ bluetooth: false, usb: false, serial: false, system: true });
   const [showHelp, setShowHelp] = useState(false);
+  /** Pop-ups are blocked, so prints run inside the dashboard and pause it until printing ends. */
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   // The dashboard's callbacks change on every render; read them through refs so live updates don't restart.
   const notifyRef = useRef(notifyProp);
@@ -239,6 +242,12 @@ export default function OrdersPanel({
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
+  }, []);
+
+  useEffect(() => {
+    const blocked = () => setPopupBlocked(true);
+    window.addEventListener(POPUP_BLOCKED_EVENT, blocked);
+    return () => window.removeEventListener(POPUP_BLOCKED_EVENT, blocked);
   }, []);
 
   useEffect(() => {
@@ -785,6 +794,22 @@ export default function OrdersPanel({
             <Wallet className="h-4 w-4" /> {payment.code ? "Payment on receipt: on" : "Add payment to receipt"}
           </button>
         </div>
+
+        {popupBlocked && (
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-bold">Allow pop-ups so printing never pauses the dashboard</p>
+              <p className="mt-1">
+                Your browser blocked the small print window, so the receipt printed inside the dashboard, which pauses it until printing ends. Click the
+                blocked pop-up icon at the right end of the address bar, choose <b>Always allow pop-ups from scandish.online</b>, then press <b>Print test</b>.
+              </p>
+            </div>
+            <button type="button" onClick={() => setPopupBlocked(false)} aria-label="Dismiss" className="rounded-lg p-1 text-amber-700 hover:bg-amber-100">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {editingPayment && <PaymentEditor payment={payment} onSave={savePayment} onClose={() => setEditingPayment(false)} />}
 
