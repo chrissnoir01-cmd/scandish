@@ -629,7 +629,8 @@ export default function OrdersPanel({
           </button>
         </div>
       )}
-      <PrintTray jobs={jobs} onCancel={(id) => queue.cancel(id)} onDismiss={(id) => queue.dismiss(id)} />
+      {/* Automatic prints run quietly: their state shows on the order card, and a failure raises a notice. */}
+      <PrintTray jobs={jobs.filter((j) => !j.auto)} onCancel={(id) => queue.cancel(id)} onDismiss={(id) => queue.dismiss(id)} />
     </>
   );
   if (!visible) return tray;
@@ -928,9 +929,9 @@ const JOB_STYLE: Record<PrintJob["status"], string> = {
 function PrintTray({ jobs, onCancel, onDismiss }: { jobs: PrintJob[]; onCancel: (id: string) => void; onDismiss: (id: string) => void }) {
   if (jobs.length === 0) return null;
   return (
-    <div className="fixed bottom-4 left-4 z-[90] w-[min(22rem,calc(100vw-2rem))] space-y-2" aria-live="polite">
+    <div className="pointer-events-none fixed bottom-4 left-4 z-[90] w-[min(22rem,calc(100vw-2rem))] space-y-2" aria-live="polite">
       {jobs.slice(-4).map((j) => (
-        <div key={j.id} className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-xl">
+        <div key={j.id} className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3.5 shadow-xl">
           <span className={`mt-0.5 rounded-lg p-1.5 ${JOB_STYLE[j.status]}`}>
             {isActive(j) ? <Loader2 className="h-4 w-4 animate-spin" /> : j.status === "completed" ? <Check className="h-4 w-4" /> : j.status === "failed" ? <CircleAlert className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
           </span>
