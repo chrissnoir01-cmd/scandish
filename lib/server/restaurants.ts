@@ -251,7 +251,7 @@ export function contentImages(c: RestaurantContent): string[] {
 export async function saveRestaurantContent(
   uid: string,
   content: RestaurantContent
-): Promise<{ slug: string; name: string; changes: string[]; dishChanges: string[]; imagesDeleted: number }> {
+): Promise<{ slug: string; subdomain: string; name: string; changes: string[]; dishChanges: string[]; imagesDeleted: number }> {
   const ref = adminDb().collection("restaurants").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Restaurant not found");
@@ -281,7 +281,7 @@ export async function saveRestaurantContent(
     .filter((id): id is string => Boolean(id?.startsWith(`scandish/${uid}/`)));
   const imagesDeleted = removed.length ? await destroyImages(removed) : 0;
 
-  return { slug, name: content.name, changes, dishChanges, imagesDeleted };
+  return { slug, subdomain: s(snap.get("subdomain")), name: content.name, changes, dishChanges, imagesDeleted };
 }
 
 const dishKey = (i: { id: string; name: string }, category: string) => i.id || `${category}::${i.name}`;
@@ -309,7 +309,7 @@ export function menuChanges(before: RestaurantContent, after: RestaurantContent)
 }
 
 /** Hide or unhide one dish right away (no publish needed). Returns its name. */
-export async function setMenuItemHidden(uid: string, key: string, hidden: boolean): Promise<{ name: string; slug: string }> {
+export async function setMenuItemHidden(uid: string, key: string, hidden: boolean): Promise<{ name: string; slug: string; subdomain: string }> {
   const ref = adminDb().collection("restaurants").doc(uid);
   const result = await adminDb().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -326,7 +326,7 @@ export async function setMenuItemHidden(uid: string, key: string, hidden: boolea
     }));
     if (!found) throw new ValidationError("That product was not found. Publish your menu first, then try again.");
     tx.update(ref, { menu: next, updatedAt: new Date().toISOString() });
-    return { name: found, slug: s(snap.get("slug")) };
+    return { name: found, slug: s(snap.get("slug")), subdomain: s(snap.get("subdomain")) };
   });
   revalidateRestaurant(result.slug);
   return result;

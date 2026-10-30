@@ -1,4 +1,5 @@
 import { facebookUrl, instagramUrl, optimizeImage, tiktokUrl, websiteUrl } from "@/lib/links";
+import { cuisinesOf, placeOf } from "@/lib/seo";
 import type { PublicRestaurant } from "@/lib/types";
 
 /** "6,000 RWF" → "6000"; anything that isn't a clear amount is left out. */
@@ -24,12 +25,19 @@ export default function RestaurantJsonLd({ restaurant: r, url }: { restaurant: P
     ...(images.length ? { image: images } : {}),
     ...(absolute(r.logo, 400) ? { logo: absolute(r.logo, 400) } : {}),
     ...(r.phone ? { telephone: r.phone } : {}),
-    ...(r.location ? { address: { "@type": "PostalAddress", streetAddress: r.location, addressCountry: "RW" } } : {}),
+    ...(r.location
+      ? { address: { "@type": "PostalAddress", streetAddress: r.location, ...(placeOf(r.location) ? { addressLocality: placeOf(r.location) } : {}), addressCountry: "RW" } }
+      : {}),
+    ...(cuisinesOf(r.menu).length ? { servesCuisine: cuisinesOf(r.menu) } : {}),
+    currenciesAccepted: "RWF",
+    ...(r.ordering ? { acceptsReservations: false, potentialAction: { "@type": "OrderAction", target: url } } : {}),
     ...(sameAs.length ? { sameAs } : {}),
     ...(r.menu.some((c) => c.items.length)
       ? {
           hasMenu: {
             "@type": "Menu",
+            name: `${r.name} menu`,
+            url,
             hasMenuSection: r.menu
               .filter((c) => c.items.length)
               .map((c) => ({

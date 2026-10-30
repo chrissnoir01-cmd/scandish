@@ -5,6 +5,9 @@ import { logActivity } from "@/lib/server/activity";
 import { getAnalytics } from "@/lib/server/analytics";
 import { getDashboardData, saveRestaurantContent, setMenuItemHidden, syncLoginEmail } from "@/lib/server/restaurants";
 import { dashboardAccess, securityLog, securityState } from "@/lib/server/dashboard-security";
+import { notifySearchEngines } from "@/lib/server/indexnow";
+import { ROOT_URL, publicPageUrl } from "@/lib/domains";
+import { after } from "next/server";
 import { fail } from "@/lib/server/result";
 import { parseRestaurantContent, ValidationError } from "@/lib/server/validate";
 import { adminAuth, adminDb } from "@/lib/server/firebase-admin";
@@ -42,7 +45,9 @@ export async function saveDashboard(idToken: string, input: unknown): Promise<Ac
       throw new ValidationError("Set your own password before publishing changes.");
     }
     const content = parseRestaurantContent(input);
-    const { slug, name, changes, dishChanges, imagesDeleted } = await saveRestaurantContent(user.uid, content);
+    const { slug, subdomain, name, changes, dishChanges, imagesDeleted } = await saveRestaurantContent(user.uid, content);
+    // Search engines that accept change notices re-read the menu within minutes.
+    after(() => notifySearchEngines([publicPageUrl(slug, subdomain), `${ROOT_URL}/restaurants`]));
     for (const line of dishChanges.slice(0, 30)) await securityLog(access, line.split(":")[0], line.slice(line.indexOf(":") + 1).trim());
     if (dishChanges.length > 30) await securityLog(access, "Menu changes", `${dishChanges.length - 30} more product changes`);
     const other = changes.filter((c) => !c.startsWith("menu"));
@@ -114,7 +119,8 @@ export async function loadAnalytics(idToken: string): Promise<ActionResult<Analy
 export async function setProductHidden(idToken: string, key: string, hidden: boolean): Promise<ActionResult> {
   try {
     const access = await dashboardAccess(idToken);
-    const { name } = await setMenuItemHidden(access.user.uid, String(key ?? "").slice(0, 300), hidden === true);
+    const { name, slug, subdomain } = await setMenuItemHidden(access.user.uid, String(key ?? "").slice(0, 300), hidden === true);
+    after(() => notifySearchEngines([publicPageUrl(slug, subdomain)]));
     await securityLog(access, hidden ? "Product hidden" : "Product unhidden", name);
     return { ok: true, data: undefined };
   } catch (err) {

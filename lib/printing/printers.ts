@@ -12,7 +12,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QRCodeSVG } from "qrcode.react";
-import { escposReceipt, htmlReceipt, paymentQrValue, type PaperWidth, type Raster, type ReceiptFooter, type TicketKind } from "./receipt";
+import { escposReceipt, htmlTickets, paymentQrValue, type PaperWidth, type Raster, type ReceiptFooter, type TicketKind } from "./receipt";
 import type { ReceiptPayment } from "../types";
 import type { Order } from "../orders";
 
@@ -24,7 +24,8 @@ export interface PrintPayload {
   restaurant: string;
   width: PaperWidth;
   reprint?: boolean;
-  ticket?: TicketKind;
+  /** Tickets to print in one go (e.g. kitchen ticket + receipt). Defaults to a receipt. */
+  tickets?: TicketKind[];
   /** The restaurant's web address, printed at the foot of receipts. */
   address?: string;
   /** How to pay: printed as a QR code with the code written below (instead of the ScanDish logo). */
@@ -36,13 +37,16 @@ export interface PrintPayload {
 export interface PrinterConnection {
   kind: PrinterKind;
   name: string;
-  /** Resolves when the printer has the data; stops early (AbortError) when `signal` is aborted. */
-  print: (job: PrintPayload, signal?: AbortSignal) => Promise<void>;
+  /**
+   * Resolves when the printer has the data; stops early (AbortError) when `signal` is aborted.
+   * `progress` (0–1) is reported while data is sent to thermal printers.
+   */
+  print: (job: PrintPayload, signal?: AbortSignal, progress?: (fraction: number) => void) => Promise<void>;
   disconnect: () => Promise<void>;
 }
 
 const LOGO_URL = "/app/icon-192.png";
-const LOGO_DOTS = 160; // about 20 mm wide on a 203-dpi receipt printer
+const LOGO_DOTS = 128; // about 16 mm wide on a 203-dpi receipt printer
 
 /** Draws an image into black-and-white dots (dark → black, light → paper). */
 async function toRaster(src: string, size: number): Promise<Raster | null> {
@@ -80,7 +84,7 @@ function receiptLogo(): Promise<Raster | null> {
   return logoRaster;
 }
 
-const QR_DOTS = 256; // about 32 mm, easy for any phone camera
+const QR_DOTS = 192; // about 24 mm: easy for any phone camera, quick to send
 const qrCache = new Map<string, { svg: string; raster: Promise<Raster | null> }>();
 
 /** The payment QR code (opens the phone dialler with the USSD code), as SVG and as printer dots. */
@@ -95,8 +99,10 @@ function paymentQr(code: string) {
   return hit;
 }
 
+const ticketsOf = (j: PrintPayload): TicketKind[] => (j.tickets?.length ? j.tickets : ["receipt"]);
+
 async function footerFor(j: PrintPayload, forHtml: boolean): Promise<ReceiptFooter> {
-  if (j.ticket === "kitchen") return {};
+  if (!ticketsOf(j).includes("receipt")) return {};
   const payment = j.payment?.code ? j.payment : undefined;
   if (payment) {
     const qr = paymentQr(payment.code);
@@ -105,7 +111,30 @@ async function footerFor(j: PrintPayload, forHtml: boolean): Promise<ReceiptFoot
   return forHtml ? { address: j.address, logoUrl: `${window.location.origin}${LOGO_URL}` } : { address: j.address, logo: await receiptLogo() };
 }
 
-const bytesFor = async (j: PrintPayload) => escposReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, await footerFor(j, false));
+/** All tickets of a job as one stream of printer data (each ticket ends with its own cut). */
+const bytesFor = async (j: PrintPayload): Promise<Uint8Array<ArrayBuffer>> => {
+  const footer = await footerFor(j, false);
+  const parts = ticketsOf(j).map((t) => escposReceipt(j.order, j.restaurant, j.width, j.reprint, t, t === "kitchen" ? {} : footer));
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+};
+
+/**
+ * How long a job may take before it counts as failed. Bluetooth printers receive data in small
+ * pieces, so receipts with pictures (logo, payment QR code) need longer than plain text.
+ */
+export function printTimeLimitMs(kind: PrinterKind | "system", j: Pick<PrintPayload, "tickets" | "payment">): number {
+  const tickets = j.tickets?.length ? j.tickets : ["receipt"];
+  const pictures = tickets.includes("receipt") ? (j.payment?.code ? 5 : 2) : 0; // KB of picture data, roughly
+  const kb = tickets.length * 1.5 + pictures;
+  const perKb = kind === "bluetooth" ? 6_000 : 1_500;
+  return Math.max(30_000, Math.round(20_000 + kb * perKb));
+}
 
 /** Gives up on a printer that doesn't answer, instead of waiting forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -224,7 +253,7 @@ async function bluetoothConnection(device: BtDevice): Promise<PrinterConnection>
 
   characteristic = await findCharacteristic();
 
-  const write = async (data: Uint8Array<ArrayBuffer>, signal?: AbortSignal) => {
+  const write = async (data: Uint8Array<ArrayBuffer>, signal?: AbortSignal, progress?: (f: number) => void) => {
     // Printers switch off or go out of range; reconnect before each receipt when needed.
     if (!device.gatt?.connected || !characteristic) characteristic = await findCharacteristic();
     checkAborted(signal);
@@ -239,13 +268,15 @@ async function bluetoothConnection(device: BtDevice): Promise<PrinterConnection>
         await ch.writeValueWithoutResponse(chunk);
         await new Promise((r) => setTimeout(r, 8)); // don't overrun the printer's small buffer
       }
+      if (progress && (i / size) % 10 === 0) progress(Math.min(1, (i + size) / data.length));
     }
+    progress?.(1);
   };
 
   return {
     kind: "bluetooth",
     name: device.name || "Bluetooth printer",
-    print: async (job, signal) => write(await bytesFor(job), signal),
+    print: async (job, signal, progress) => write(await bytesFor(job), signal, progress),
     disconnect: async () => device.gatt?.disconnect(),
   };
 }
@@ -279,12 +310,13 @@ async function usbConnection(device: UsbDevice): Promise<PrinterConnection> {
   return {
     kind: "usb",
     name: [device.manufacturerName, device.productName].filter(Boolean).join(" ") || "USB printer",
-    print: async (job, signal) => {
+    print: async (job, signal, progress) => {
       const data = await bytesFor(job);
       // Sent in pieces so a cancel stops between them.
       for (let i = 0; i < data.length; i += 4096) {
         checkAborted(signal);
         await device.transferOut(endpoint, data.slice(i, i + 4096));
+        progress?.(Math.min(1, (i + 4096) / data.length));
       }
     },
     disconnect: () => device.close().catch(() => {}),
@@ -305,7 +337,7 @@ async function serialConnection(port: SerialPortLike, label: string): Promise<Pr
   return {
     kind: "serial",
     name: label,
-    print: async (job, signal) => {
+    print: async (job, signal, progress) => {
       if (!port.writable) throw new Error("The printer is not connected.");
       const data = await bytesFor(job);
       const writer = port.writable.getWriter();
@@ -313,6 +345,7 @@ async function serialConnection(port: SerialPortLike, label: string): Promise<Pr
         for (let i = 0; i < data.length; i += 512) {
           checkAborted(signal);
           await writer.write(data.slice(i, i + 512));
+          progress?.(Math.min(1, (i + 512) / data.length));
         }
       } finally {
         writer.releaseLock();
@@ -398,7 +431,8 @@ const systemConnection: PrinterConnection = {
   kind: "system",
   name: "Printer installed on this computer",
   print: async (j, signal) => {
-    const html = htmlReceipt(j.order, j.restaurant, j.width, j.reprint, j.ticket, await footerFor(j, true));
+    // Every ticket in ONE page: a second print request right after the first would be ignored.
+    const html = htmlTickets(j.order, j.restaurant, j.width, Boolean(j.reprint), ticketsOf(j), await footerFor(j, true));
     if (j.ownWindow && printInWindow(html)) return;
     await printHtml(html, signal);
   },

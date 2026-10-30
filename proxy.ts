@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { subdomainFromHost } from "@/lib/domains";
+import { INDEXNOW_KEY } from "@/lib/seo";
 
 /**
  * Restaurant pages are prebuilt (served from the CDN), so request-specific routing lives here.
@@ -11,6 +12,9 @@ import { subdomainFromHost } from "@/lib/domains";
 export function proxy(request: NextRequest) {
   const sub = subdomainFromHost(request.headers.get("host"));
   const { pathname, search, searchParams } = request.nextUrl;
+
+  // Search engines confirm our IndexNow pings by reading this file on every host (main site and subdomains).
+  if (pathname === `/${INDEXNOW_KEY}.txt`) return NextResponse.rewrite(new URL("/api/indexnow-key", request.url));
 
   if (!sub) {
     // QR scans (/r/<slug>?s=qr) use a prebuilt twin page that forwards the QR tag to a Premium subdomain.

@@ -11,6 +11,9 @@ const isLocal = ROOT_DOMAIN.startsWith("localhost");
 export const ROOT_URL = `${isLocal ? "http" : "https"}://${ROOT_DOMAIN}`;
 
 export const subdomainUrl = (sub: string) => `${isLocal ? "http" : "https"}://${sub}.${ROOT_DOMAIN}`;
+
+/** Where a restaurant's public menu lives: its own subdomain, or /r/<slug>. */
+export const publicPageUrl = (slug: string, subdomain: string) => (subdomain ? `${subdomainUrl(subdomain)}/` : `${ROOT_URL}/r/${slug}`);
 export const subdomainHost = (sub: string) => `${sub}.${ROOT_DOMAIN}`;
 
 /** Names that can never be given to a business. */

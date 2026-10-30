@@ -5,6 +5,8 @@ import { subdomainUrl } from "../domains";
 import { optimizeImage } from "../links";
 import { isPubliclyVisible } from "../subscription";
 import { adminDb } from "./firebase-admin";
+import { toContent } from "./restaurants";
+import { topicsOf } from "../seo";
 
 export const SHOWCASE_TAG = "showcase";
 
@@ -64,5 +66,64 @@ export async function getShowcase(): Promise<Showcase> {
   } catch (err) {
     console.error("showcase unavailable", err);
     return { restaurants: [], liveCount: 0, exampleUrl: "" };
+  }
+}
+
+export interface DirectoryRestaurant {
+  name: string;
+  logo: string;
+  url: string;
+  location: string;
+  /** Menu categories that have visible dishes, as the restaurant named them. */
+  categories: string[];
+  /** Clean search topics found in the menu ("Pizza", "Burgers", …). */
+  topics: string[];
+  dishes: number;
+  updatedAt: string;
+}
+
+/**
+ * Every live restaurant for the public directory (/restaurants): what Google follows to find
+ * each menu page, and what matches searches like "pizza menu Kigali". Cached with the showcase.
+ */
+async function loadDirectory(): Promise<DirectoryRestaurant[]> {
+  const db = adminDb();
+  const [companies, restaurants] = await Promise.all([
+    db.collection("companies").select("status", "subscriptionEnd", "trialEndsAt").get(),
+    db.collection("restaurants").select("companyId", "name", "logo", "slug", "subdomain", "location", "menu", "updatedAt").get(),
+  ]);
+  const live = new Set(
+    companies.docs
+      .filter((c) => isPubliclyVisible({ status: c.get("status"), subscriptionEnd: s(c.get("subscriptionEnd")), trialEndsAt: s(c.get("trialEndsAt")) }))
+      .map((c) => c.id)
+  );
+  return restaurants.docs
+    .filter((r) => live.has(s(r.get("companyId"))) && s(r.get("slug")) && s(r.get("name")))
+    .map((r) => {
+      const content = toContent(r.data());
+      const menu = (Array.isArray(r.get("menu")) ? r.get("menu") : []) as { category?: unknown; items?: { hidden?: unknown }[] }[];
+      const shown = menu.map((c) => ({ category: s(c.category).trim(), count: (Array.isArray(c.items) ? c.items : []).filter((i) => i?.hidden !== true).length }));
+      return {
+        name: s(r.get("name")),
+        logo: s(r.get("logo")) ? optimizeImage(s(r.get("logo")), 160) : "",
+        url: s(r.get("subdomain")) ? `${subdomainUrl(s(r.get("subdomain")))}/` : `https://scandish.online/r/${s(r.get("slug"))}`,
+        location: s(r.get("location")),
+        categories: shown.filter((c) => c.count > 0 && c.category).map((c) => c.category),
+        topics: topicsOf(content.menu),
+        dishes: shown.reduce((n, c) => n + c.count, 0),
+        updatedAt: s(r.get("updatedAt")),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const directory = unstable_cache(loadDirectory, ["directory"], { tags: [SHOWCASE_TAG], revalidate: 3600 });
+
+export async function getDirectory(): Promise<DirectoryRestaurant[]> {
+  try {
+    return await directory();
+  } catch (err) {
+    console.error("directory unavailable", err);
+    return [];
   }
 }

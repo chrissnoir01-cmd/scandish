@@ -17,6 +17,8 @@ export interface PrintJob {
   error: string;
   auto: boolean;
   createdAt: number;
+  /** 0–100 while data is being sent (thermal printers); -1 when unknown. */
+  progress: number;
 }
 
 export interface PrintRequest {
@@ -26,7 +28,9 @@ export interface PrintRequest {
   auto?: boolean;
   /** Runs before printing (e.g. claim the order so only one device prints it). false = skip quietly. */
   before?: () => Promise<boolean>;
-  run: (signal: AbortSignal) => Promise<void>;
+  run: (signal: AbortSignal, progress: (fraction: number) => void) => Promise<void>;
+  /** How long this job may take (bigger receipts over Bluetooth need longer). Default 30 s. */
+  timeoutMs?: number;
   /** Runs once the job has finished, whatever the outcome. */
   after?: (status: JobStatus) => Promise<void> | void;
 }
@@ -82,7 +86,7 @@ export class PrintQueue {
     if (this.jobs.some((j) => j.key === req.key && isActive(j))) return false;
     const id = `job-${++this.seq}`;
     this.requests.set(id, req);
-    this.jobs.push({ id, key: req.key, orderId: req.orderId, label: req.label, status: "preparing", error: "", auto: req.auto === true, createdAt: Date.now() });
+    this.jobs.push({ id, key: req.key, orderId: req.orderId, label: req.label, status: "preparing", error: "", auto: req.auto === true, createdAt: Date.now(), progress: -1 });
     this.emit();
     void this.pump();
     return true;
@@ -137,6 +141,7 @@ export class PrintQueue {
     this.controllers.set(id, controller);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
+    const limit = req.timeoutMs ?? TIME_LIMIT_MS;
     try {
       if (req.before && !(await req.before())) {
         // Another device is printing it: nothing to show.
@@ -151,16 +156,25 @@ export class PrintQueue {
       timer = setTimeout(() => {
         timedOut = true;
         controller.abort();
-      }, TIME_LIMIT_MS);
+      }, limit);
       // Cancel and the time limit both stop waiting at once, even if the printer never answers.
       const stopped = new Promise<never>((_, reject) =>
         controller.signal.addEventListener("abort", () => reject(new DOMException("Printing stopped", "AbortError")))
       );
-      await Promise.race([req.run(controller.signal), stopped]);
+      let shown = -1;
+      const progress = (f: number) => {
+        const pct = Math.round(Math.max(0, Math.min(1, f)) * 100);
+        // A redraw every 5% is plenty.
+        if (pct - shown >= 5 || pct === 100) {
+          shown = pct;
+          this.update(id, { progress: pct });
+        }
+      };
+      await Promise.race([req.run(controller.signal, progress), stopped]);
       this.finish(id, "completed", "");
     } catch (err) {
       if (timedOut) {
-        this.finish(id, "failed", "The printer didn't respond within 30 seconds. Check it's on and connected, then print again.");
+        this.finish(id, "failed", `The printer didn't finish within ${Math.round(limit / 1000)} seconds. Check it's on and connected, then print again.`);
       } else if (err instanceof DOMException && err.name === "AbortError") {
         this.finish(id, "cancelled", "");
       } else {

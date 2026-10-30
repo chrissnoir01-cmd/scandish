@@ -230,8 +230,11 @@ export function htmlReceipt(
   ticket: TicketKind = "receipt",
   footer: ReceiptFooter = {}
 ): string {
-  const printable = width === 80 ? 72 : 48; // mm the print head covers
-  const rows = layout(order, restaurant, reprint, ticket, footer)
+  return htmlTickets(order, restaurant, width, reprint, [ticket], footer);
+}
+
+function htmlRows(order: Order, restaurant: string, reprint: boolean, ticket: TicketKind, footer: ReceiptFooter): string {
+  return layout(order, restaurant, reprint, ticket, ticket === "kitchen" ? {} : footer)
     .map((l) => {
       if (l.kind === "rule") return `<hr>`;
       if (l.kind === "logo") return footer.logoUrl ? `<div class="c logo"><img src="${esc(footer.logoUrl)}" alt="ScanDish"></div>` : "";
@@ -240,15 +243,25 @@ export function htmlReceipt(
       return `<div class="${[l.align === "center" ? "c" : "", l.bold ? "b" : "", l.big ? "big" : ""].join(" ")}">${esc(l.text)}</div>`;
     })
     .join("");
+}
+
+/**
+ * Several tickets (e.g. kitchen ticket + receipt) in ONE printable page, separated by page breaks.
+ * Browsers ignore a second print request made right after the first, so they must go out together.
+ */
+export function htmlTickets(order: Order, restaurant: string, width: PaperWidth, reprint: boolean, tickets: TicketKind[], footer: ReceiptFooter = {}): string {
+  const printable = width === 80 ? 72 : 48; // mm the print head covers
+  const body = tickets.map((t) => `<section class="ticket">${htmlRows(order, restaurant, reprint, t, footer)}</section>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Order ${order.number}</title><style>
 @page{size:${width}mm auto;margin:0}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000}
-body{width:${printable}mm;margin:0 auto;padding:2mm 0 6mm;font:12px/1.35 "Courier New",ui-monospace,monospace}
+body{width:${printable}mm;margin:0 auto;font:12px/1.35 "Courier New",ui-monospace,monospace}
+.ticket{padding:2mm 0 6mm}.ticket+.ticket{break-before:page;page-break-before:always}
 .c{text-align:center}.b{font-weight:700}.big{font-size:17px;line-height:1.25}
 hr{border:0;border-top:1px dashed #000;margin:4px 0}
 .pair{display:flex;justify-content:space-between;gap:8px}.pair span:last-child{white-space:nowrap}
-.qr{margin:4px 0}.qr svg{width:32mm;height:32mm}
-.logo{margin-top:6px}.logo img{width:18mm;height:auto;filter:grayscale(1) brightness(0.6) contrast(10)}
-</style></head><body>${rows}</body></html>`;
+.qr{margin:4px 0}.qr svg{width:26mm;height:26mm}
+.logo{margin-top:6px}.logo img{width:16mm;height:auto;filter:grayscale(1) brightness(0.6) contrast(10)}
+</style></head><body>${body}</body></html>`;
 }

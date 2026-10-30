@@ -12,6 +12,7 @@ export const START_MESSAGE = "Hello ScanDish, I'd like a menu page for my restau
 const NAV = [
   { label: "How it works", href: "/#how-it-works" },
   { label: "Pricing", href: "/#pricing" },
+  { label: "Menus", href: "/restaurants" },
   { label: "About", href: "/about" },
   { label: "Owner login", href: "/login" },
 ];
@@ -107,6 +108,7 @@ export async function SiteFooter() {
           links={[
             ["How it works", "/#how-it-works"],
             ["Pricing", "/#pricing"],
+            ["Restaurant menus", "/restaurants"],
             ["About ScanDish", "/about"],
             ["Questions", "/about#faq"],
           ]}

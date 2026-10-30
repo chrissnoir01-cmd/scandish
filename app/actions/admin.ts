@@ -12,7 +12,9 @@ import { getContact, getContractTemplate, getPricingFresh, saveContact, saveCont
 import { normalizeWhatsApp, type ContactInfo, type ContractTemplate, type PlanPricing, type Pricing } from "@/lib/settings";
 import { premiumDueDate, premiumPending } from "@/lib/premium";
 import { validateCertificateId } from "@/lib/server/certificates";
-import { normalizeSubdomain, subdomainHost, subdomainProblem } from "@/lib/domains";
+import { ROOT_URL, normalizeSubdomain, publicPageUrl, subdomainHost, subdomainProblem } from "@/lib/domains";
+import { notifySearchEngines } from "@/lib/server/indexnow";
+import { after } from "next/server";
 import { revalidateSubdomain, subdomainsCol } from "@/lib/server/subdomains";
 import { deleteUnusedImages, findUnusedImages } from "@/lib/server/image-cleanup";
 import { inTrial } from "@/lib/subscription";
@@ -683,6 +685,8 @@ export async function setSubdomain(idToken: string, companyId: string, value: st
 
     revalidateRestaurant(result.slug);
     for (const n of [result.name, ...result.touched]) revalidateSubdomain(n);
+    // A new address: search engines that accept change notices pick it up within minutes.
+    after(() => notifySearchEngines([publicPageUrl(result.slug, result.name), `${ROOT_URL}/restaurants`]));
     if (result.old !== result.name) {
       const companyName = (await companyRef.get()).get("companyName") ?? "";
       await logActivity({
